@@ -1,0 +1,314 @@
+================================================================================
+AIR FLOW MANIFOLD - ASSEMBLY DIAGRAM
+================================================================================
+
+EXPLODED VIEW (Side View):
+
+                         ╔══════════════╗
+                         ║   120mm FAN  ║  ← 120mm PWM fan (12V)
+                         ║   ╭───────╮  ║
+                         ║   │ motor │  ║
+                         ╚═══╧═══════╧══╝
+                              M4 bolts
+        ┌─────────────────────┴┴┴┴─────────────────────┐
+        │                                                │
+        │           FAN ADAPTER (44mm high)              │
+        │  ╔══════════════════════════════════════════╗  │
+        │  ║          48×48 → 130×130mm               ║  │
+        │  ║              Lofted transition            ║  │
+        │  ║                                           ║  │
+        │  ╚═══════════════╦═══════════════════════════╝  │
+        └─────────snap─fit─┘                              │
+                    │                                     │
+        ┌───────────┴──────────┐                          │
+        │                      │                          │
+        │   SENSOR CHAMBER (80mm high)                    │
+        │  ╔═══════════════╗                              │
+        │  ║   48×48mm     ║                              │
+        │  ║               ║  ← 1"×1" sensor PCB          │
+        │  ║   ┌──────┐    ║     mounted on struts        │
+        │  ║   │SENSOR│    ║     (M3 screws)              │
+        │  ║   └──────┘    ║                              │
+        │  ║               ║                              │
+        │  ╚═══════════════╝                              │
+        └─────────snap─fit──────────┐                     │
+                    │                │                    │
+        ┌───────────┴─────────────┐  │                    │
+        │                         │  │                    │
+        │  TRANSITION (150mm high)│  │                    │
+        │  ╔═════════════════════╗│  │                    │
+        │  ║                     ║│  │                    │
+        │  ║   510×510mm         ║│  │                    │
+        │  ║      ↓              ║│  │                    │
+        │  ║   Gradual taper     ║│  │  Airflow           │
+        │  ║      ↓              ║│  │  direction         │
+        │  ║   48×48mm           ║│  │     ↑              │
+        │  ║                     ║│  │     ↑              │
+        │  ╚═════════════════════╝│  │     ↑              │
+        └─────────snap─fit─────────┘  │     ↑              │
+                    │                 │     ↑              │
+        ┌───────────┴──────────────┐  │     ↑              │
+        │                          │  │     ↑              │
+        │   MANIFOLD BASE (43mm high)                       │
+        │  ╔════════════════════════════════════════════╗   │
+        │  ║   510mm × 510mm                            ║   │
+        │  ║                                            ║   │
+        │  ║   ○         ○         ○                   ║   │ ← Tube sockets
+        │  ║                                            ║   │   (9 total)
+        │  ║   ○         ○         ○                   ║   │
+        │  ║                                            ║   │
+        │  ║   ○         ○         ○                   ║   │
+        │  ║                                            ║   │
+        │  ╚════════════════════════════════════════════╝   │
+        └──────────────────────┬┬┬──────────────────────────┘
+                               │││
+        ═══════════════════════╪╪╪═══════════════════════════
+                               │││
+                   FREEZER TOP │││ (2" thick)
+                               │││
+        ═══════════════════════╪╪╪═══════════════════════════
+                               │││
+                               │││ ← Intake tubes (60mm)
+                               │││   38mm OD, 35mm ID
+                               │││   (9 total)
+                               ↓↓↓
+                      Air from cabinet interior
+
+
+TOP VIEW - TUBE LAYOUT:
+
+    ┌──────────────────────────────────────────────────┐
+    │                   550mm CABINET                  │
+    │  ┌────────────────────────────────────────────┐  │
+    │  │         510mm BASE FOOTPRINT               │  │
+    │  │                                            │  │
+    │  │    ○           ○           ○               │  │
+    │  │                                            │  │
+    │  │         137.5mm spacing                    │  │
+    │  │                                            │  │
+    │  │    ○           ○           ○               │  │
+    │  │                                            │  │
+    │  │                                            │  │
+    │  │    ○           ○           ○               │  │
+    │  │                                            │  │
+    │  └────────────────────────────────────────────┘  │
+    │                                                  │
+    └──────────────────────────────────────────────────┘
+
+    ○ = Intake tube (38mm OD)
+    Spacing: 137.5mm between tube centers
+
+
+SPLIT BASE LAYOUT (for print bed constraints):
+
+    ┌───────────┬───────────┬───────────┐
+    │           │           │           │
+    │  Section  │  Section  │  Section  │
+    │   0,2     │   1,2     │   2,2     │
+    │           │           │           │
+    │  170×170  │  170×170  │  170×170  │
+    │    mm     │    mm     │    mm     │
+    │     ○     │     ○     │     ○     │
+    ├───────────┼───────────┼───────────┤
+    │           │           │           │
+    │  Section  │  Section  │  Section  │
+    │   0,1     │   1,1     │   2,1     │
+    │           │           │           │
+    │  170×170  │  170×170  │  170×170  │
+    │    mm     │    mm     │    mm     │
+    │     ○     │     ○     │     ○     │
+    ├───────────┼───────────┼───────────┤
+    │           │           │           │
+    │  Section  │  Section  │  Section  │
+    │   0,0     │   1,0     │   2,0     │
+    │           │           │           │
+    │  170×170  │  170×170  │  170×170  │
+    │    mm     │    mm     │    mm     │
+    │     ○     │     ○     │     ○     │
+    └───────────┴───────────┴───────────┘
+
+    Each section: 170mm × 170mm × 43mm
+    Fits Ender 3 V3 KE: 250×220×220mm (with margin)
+
+    Sections bolt together with:
+    - M4 bolts through edges
+    - Alignment pins for positioning
+    - Silicone gasket for air-tight seal
+
+
+JOINT DETAIL (Snap-Fit Connection):
+
+    Upper Part:                     Lower Part:
+    ┌─────────────────┐
+    │                 │
+    │                 │             ┌─────────────────┐
+    │                 │             │     ╭─╮         │
+    └─────────────────┘             │    ╭┴─┴╮        │ ← O-ring groove
+          ╲   ╱                     │   ╭┴───┴╮       │   (3mm × 1.5mm)
+           ╲ ╱                      └───┴─────┴───────┘
+            │                            ║     ║
+            │ Male snap tab              ║     ║ Female snap slot
+            ╲                            ║     ║
+             ╲___                        ║_____║
+                ╲                        ║     ║
+                 ╲____        ___________║     ║
+                      ╲______/                 ║
+                                               ║
+    Press together until CLICK!                ║
+    Tabs engage in slots                       ║
+    O-ring seals against groove                ║
+
+
+SENSOR MOUNTING DETAIL:
+
+    Top View:                       Side View:
+
+    ┌──────────────────┐           ┌──────────────────┐
+    │  Sensor Chamber  │           │  Sensor Chamber  │
+    │                  │           │                  │
+    │  ╔════════════╗  │           │  ─────────────── │
+    │  ║  ○      ○  ║  │           │  │    Strut    │ │
+    │  ║            ║  │           │  │   ┌──────┐  │ │
+    │  ║    PCB     ║  │           │  │   │SENSOR│  │ │
+    │  ║  (1"×1")   ║  │           │  │   │ PCB  │  │ │ ← M3 screws
+    │  ║            ║  │           │  │   └──────┘  │ │   in corners
+    │  ║  ○      ○  ║  │           │  │    Strut    │ │
+    │  ╚════════════╝  │           │  ─────────────── │
+    │                  │           │                  │
+    └──────────────────┘           └──────────────────┘
+
+    - 4mm mounting holes at corners
+    - 23.4mm hole spacing (25.4mm - 2×1mm offset)
+    - Cross-struts support PCB in center of airflow
+    - Sensor element must face airflow direction
+
+
+AIRFLOW PATH:
+
+    Cabinet Interior (550×550mm, 0-1 m/s)
+              ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓
+    ╔═══════════════════════════════════╗
+    ║    9× Intake Tubes (35mm ID)      ║
+    ║         Total Area: 8659 mm²       ║
+    ╚═══════════════════════════════════╝
+              ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓
+    ┌───────────────────────────────────┐
+    │      Collection Chamber            │
+    │      (510×510mm)                   │
+    └───────────────────────────────────┘
+              ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓ ↓
+    ╱────────────────────────────────────╲
+    ╲    Gradual Transition (150mm)     ╱
+    ╱    510×510 → 42×42mm              ╲
+    ╲    Laminar flow development       ╱
+    ╱────────────────────────────────────╲
+              ↓ ↓ ↓ ↓ ↓ ↓
+    ┌─────────────────────────────┐
+    │   Sensor Chamber             │
+    │   (42×42mm, 1764 mm²)        │
+    │        [SENSOR]              │  ← 0-5 m/s
+    │   Speed × 4.91               │
+    └─────────────────────────────┘
+              ↓ ↓ ↓ ↓ ↓ ↓
+    ╱───────────────────────────────╲
+    ╲  Fan Adapter (42×42 → 120mm) ╱
+    ╱───────────────────────────────╲
+              ↓ ↓ ↓ ↓ ↓ ↓
+    ┌─────────────────────────────┐
+    │      120mm Fan               │
+    │    (pulls air through)       │
+    └─────────────────────────────┘
+              ↓ ↓ ↓ ↓ ↓ ↓
+           Exhaust to room
+
+
+ASSEMBLY SEQUENCE:
+
+    1. Print all parts
+    2. (If split base) Assemble 9 sections with bolts + gasket
+    3. Drill holes in freezer top (9× 38mm holes)
+    4. Install intake tubes from below freezer
+    5. Place base on freezer top
+    6. Snap transition onto base
+    7. Snap sensor chamber onto transition
+    8. Mount sensor PCB in chamber
+    9. Snap fan adapter onto chamber
+   10. Mount 120mm fan on adapter
+   11. Connect power and sensor
+   12. Test and calibrate
+
+
+HARDWARE CHECKLIST:
+
+    ☐ 9× Intake tubes (3D printed)
+    ☐ 1× Base assembly (9 sections OR 1 monolithic)
+    ☐ 1× Transition section
+    ☐ 1× Sensor chamber
+    ☐ 1× Fan adapter
+    ☐ 1× 120mm PC fan (12V PWM recommended)
+    ☐ 1× Airflow sensor (1"×1" PCB)
+    ☐ 24× M4 bolts + nuts (for split base)
+    ☐ 4× M3 screws (for sensor mount)
+    ☐ 4× M4 screws (for fan mount)
+    ☐ 9× Rubber grommets (38mm ID)
+    ☐ 1× Tube silicone gasket maker
+    ☐ 12V power supply
+    ☐ Wire for sensor connection
+
+
+DIMENSIONS SUMMARY:
+
+    Overall Assembly:
+    - Width: 510mm (base) → 130mm (fan adapter)
+    - Depth: 510mm (base) → 130mm (fan adapter)
+    - Height: ~290mm (base to fan)
+
+    Individual Components:
+    - Base: 510×510×43mm (OR 9× 170×170×43mm)
+    - Transition: 510×510×150mm (tapered to 48×48mm)
+    - Sensor chamber: 48×48×80mm
+    - Fan adapter: 48×48×44mm (expanding to 130×130mm)
+    - Intake tubes: Ø38mm × 60mm (9 pieces)
+
+    Key Measurements:
+    - Tube spacing: 137.5mm centers
+    - Tube ID: 35mm (intake area: 962mm² each)
+    - Sensor chamber: 42×42mm (1764mm²)
+    - Speed multiplier: 4.91×
+    - Total intake area: 8659mm²
+
+
+PRINT TIME ESTIMATES (PETG, 0.2mm layers, 60mm/s):
+
+    Intake tubes (9×):        ~2 hrs each = ~18 hrs
+    Base sections (9×):       ~5 hrs each = ~45 hrs
+    OR Monolithic base:       ~50 hrs (if printable)
+    Transition section:       ~12 hrs
+    Sensor chamber:          ~3 hrs
+    Fan adapter:             ~5 hrs
+
+    TOTAL (split base):      ~83 hours
+    TOTAL (monolithic):      ~88 hours
+
+
+MATERIAL ESTIMATES:
+
+    Total filament:          ~2.5 kg PETG
+    Split base sections:     ~1.8 kg
+    Other parts:             ~0.7 kg
+
+
+SUGGESTED PRINT ORDER:
+
+    1. Print 1× intake tube (test fit in freezer hole)
+    2. If good, print remaining 8× intake tubes
+    3. Print 1× base section (test quality)
+    4. Print remaining 8× base sections
+    5. Print sensor chamber
+    6. Print fan adapter
+    7. Print transition section (print last - longest single print)
+
+
+================================================================================
+END OF ASSEMBLY DIAGRAM
+================================================================================
