@@ -36,7 +36,11 @@ TARGET_SPEED_MULTIPLIER = 5  # 5x magnification
 TUBE_OD = 38  # mm outer diameter (larger tubes for better flow)
 TUBE_ID = 35  # mm inner diameter
 TUBE_LENGTH = 60  # mm (accommodate 1.5-2.5 inch / 38-64mm freezer top)
-TUBE_THREAD_LENGTH = 15  # mm for nut/gasket mounting
+THREAD_LENGTH = 20  # mm (threaded portion at bottom of tube)
+THREAD_PITCH = 2.5  # mm (ISO coarse thread pitch for M38)
+THREAD_DEPTH = 1.2  # mm (depth of thread grooves)
+NUT_BASE_DIA = 55  # mm (nut base diameter for gasket surface)
+NUT_THICKNESS = 8  # mm (nut thread engagement height)
 NUM_TUBES_X = 3  # tubes in X direction (fewer tubes, larger diameter)
 NUM_TUBES_Y = 3  # tubes in Y direction
 TUBE_SPACING_X = CABINET_WIDTH / (NUM_TUBES_X + 1)
@@ -97,8 +101,15 @@ def calculate_intake_area():
     return NUM_TUBES_X * NUM_TUBES_Y * math.pi * (TUBE_ID/2)**2
 
 def calculate_sensor_area():
-    """Calculate sensor chamber cross-sectional area"""
-    return SENSOR_CHAMBER_WIDTH ** 2
+    """
+    Calculate effective sensor chamber cross-sectional area
+    PCB is mounted vertically, so it blocks some airflow area
+    PCB dimensions: 1" x 1mm (25.4mm x 1mm)
+    """
+    total_area = SENSOR_CHAMBER_WIDTH ** 2
+    pcb_blockage = SENSOR_PCB_SIZE * 1  # 25.4mm x 1mm = 25.4 mm²
+    effective_area = total_area - pcb_blockage
+    return effective_area
 
 def verify_speed_multiplier():
     """Verify that the area ratio provides desired speed magnification"""
@@ -116,31 +127,109 @@ def verify_speed_multiplier():
 # ==================== COMPONENT BUILDERS ====================
 
 def create_intake_tube():
-    """Create a single intake tube with threading support"""
-    # Create outer cylinder
+    """
+    Create a single intake tube that points DOWN into the freezer
+    Tube is inserted from below the base and extends down into freezer
+    Has external threads at bottom for mounting nut inside freezer
+    """
+    # Create outer cylinder pointing DOWN (-Z direction)
     tube = (
         cq.Workplane("XY")
         .circle(TUBE_OD/2)
-        .extrude(TUBE_LENGTH)
+        .extrude(-TUBE_LENGTH)  # Negative to extrude downward
     )
 
-    # Cut inner hole - but NOT all the way through, leave bottom open
-    # Create a hollow tube by cutting from top
+    # Cut inner hole - open at top (Z=0)
     tube = (
-        tube.faces(">Z").workplane()
+        tube.faces(">Z").workplane()  # Work from top face at Z=0
         .circle(TUBE_ID/2)
-        .cutBlind(-TUBE_LENGTH)  # Cut down but not through bottom
+        .cutBlind(-(TUBE_LENGTH))  
     )
 
-    # Add grooves for o-ring/gasket at top
+    # Add groove for o-ring/gasket at top (Z=0) for sealing against freezer
     tube = (
         tube.faces(">Z").workplane()
         .circle(TUBE_OD/2 + 1)
         .circle(TUBE_OD/2 - 0.5)
-        .extrude(-2)
+        .extrude(-2)  # Cut groove downward from top
     )
 
+    # Add external threads at bottom for nut
+    # CadQuery doesn't have built-in threading, so we'll create a simplified thread
+    # using helical grooves approximated with multiple angled cuts
+    num_threads = int(THREAD_LENGTH / THREAD_PITCH)
+
+    for i in range(num_threads):
+        z_position = -(TUBE_LENGTH - THREAD_LENGTH) - i * THREAD_PITCH
+        # Create a ring groove for each thread
+        groove = (
+            cq.Workplane("XY")
+            .workplane(offset=z_position)
+            .circle(TUBE_OD/2)
+            .circle(TUBE_OD/2 - THREAD_DEPTH)
+            .extrude(-THREAD_PITCH * 0.6)  # Groove depth
+        )
+        tube = tube.cut(groove)
+
     return tube
+
+def create_tube_mounting_nut():
+    """
+    Create a threaded nut that screws onto the bottom of the intake tube
+    Provides clamping force and wide base for gasket sealing
+    Mounts on inside of freezer to secure tube through freezer wall
+    """
+    # Create wide base for gasket surface and spreading clamping force
+    nut_base = (
+        cq.Workplane("XY")
+        .circle(NUT_BASE_DIA/2)
+        .extrude(WALL_THICKNESS)
+    )
+
+    # Create hexagonal gripping section (for wrench)
+    hex_size = TUBE_OD + 8  # Slightly larger than tube OD
+    hex_height = 5  # mm
+    hex_section = (
+        cq.Workplane("XY")
+        .workplane(offset=WALL_THICKNESS)
+        .polygon(6, hex_size)  # 6-sided polygon for hex nut
+        .extrude(hex_height)
+    )
+
+    # Create cylindrical threaded section (solid outer cylinder)
+    thread_section_outer = TUBE_OD/2 + THREAD_DEPTH + 2  # Outer wall thickness
+    thread_section = (
+        cq.Workplane("XY")
+        .workplane(offset=WALL_THICKNESS + hex_height)
+        .circle(thread_section_outer)  # Solid outer wall
+        .extrude(NUT_THICKNESS)
+    )
+
+    # Combine all sections
+    nut = nut_base.union(hex_section).union(thread_section)
+
+    # Cut central hole through entire nut - smooth bore for tube to pass through
+    nut = (
+        nut.faces(">Z").workplane()
+        .circle(TUBE_OD/2 + 0.3)  # Clearance for tube OD
+        .cutThruAll()
+    )
+
+    # Cut internal threads (grooves on the inside wall)
+    # These grooves are CUT from the inside surface to create internal threads
+    for i in range(int(NUT_THICKNESS / THREAD_PITCH)):
+        z_position = WALL_THICKNESS + hex_height + i * THREAD_PITCH
+        # Create ring groove that cuts INTO the inner surface
+        groove = (
+            cq.Workplane("XY")
+            .workplane(offset=z_position)
+            .circle(TUBE_OD/2 + 0.3 + THREAD_DEPTH)  # Extends inward from bore
+            .circle(TUBE_OD/2 + 0.3)  # Inner edge at bore surface
+            .extrude(THREAD_PITCH * 0.6)
+        )
+        nut = nut.cut(groove)  # CUT the groove, not union!
+
+    return nut
 
 def create_sensor_mount():
     """Create sensor PCB mounting bracket with screw holes"""
@@ -344,14 +433,7 @@ def create_manifold_base():
     base_width = MANIFOLD_BASE_SIZE - 2 * MANIFOLD_OUTER_MARGIN
     base_depth = MANIFOLD_BASE_SIZE - 2 * MANIFOLD_OUTER_MARGIN
 
-    # Create base plate
-    base = (
-        cq.Workplane("XY")
-        .rect(base_width, base_depth)
-        .extrude(WALL_THICKNESS)
-    )
-
-    # Calculate tube positions
+    # Calculate tube positions FIRST - we'll need these multiple times
     tube_positions = []
     for i in range(NUM_TUBES_X):
         for j in range(NUM_TUBES_Y):
@@ -359,6 +441,22 @@ def create_manifold_base():
             x = -base_width/2 + (i + 1) * (base_width / (NUM_TUBES_X + 1))
             y = -base_depth/2 + (j + 1) * (base_depth / (NUM_TUBES_Y + 1))
             tube_positions.append((x, y))
+
+    # Create base plate with holes under tube positions for airflow
+    base = (
+        cq.Workplane("XY")
+        .rect(base_width, base_depth)
+        .extrude(WALL_THICKNESS)
+    )
+
+    # Cut airflow holes in base plate - do this BEFORE adding bosses
+    for x, y in tube_positions:
+        base = (
+            base.faces(">Z").workplane()  # Work from top of base plate
+            .pushPoints([(x, y)])
+            .circle(TUBE_ID/2)  # Match inner diameter of tube
+            .cutThruAll()  # Cut through base plate
+        )
 
     # Create collection chamber walls above base
     base = (
@@ -389,9 +487,6 @@ def create_manifold_base():
 
     # Add snap-fit male connectors on top edge
     base = add_male_snap_fit(base, base_width, base_depth, MANIFOLD_BASE_HEIGHT + WALL_THICKNESS)
-
-    # Add o-ring groove
-    base = add_oring_groove(base, base_width, base_depth, MANIFOLD_BASE_HEIGHT + WALL_THICKNESS)
 
     return base
 
@@ -432,11 +527,13 @@ def create_transition_section():
         .loft(combine=True)
     )
 
-    # Create inner cavity with taper
+    # Create inner cavity with taper - OPEN at bottom for airflow!
+    # Start the inner cavity at WALL_THICKNESS to leave the bottom rim intact
+    # but make sure the center is completely open
     inner = (
         cq.Workplane("XY")
-        .workplane(offset=WALL_THICKNESS * 2)  # Start above bottom plate
-        .rect(base_width - 2*WALL_THICKNESS, base_depth - 2*WALL_THICKNESS)
+        .workplane(offset=WALL_THICKNESS)  # Start just above bottom plate
+        .rect(base_width - 2*bottom_margin, base_depth - 2*bottom_margin)  # Open center
         .workplane(offset=TRANSITION_LENGTH - WALL_THICKNESS)
         .rect(SENSOR_CHAMBER_WIDTH, SENSOR_CHAMBER_WIDTH)
         .loft(combine=True)
@@ -444,7 +541,7 @@ def create_transition_section():
 
     transition = outer.cut(inner)
 
-    # Add bottom plate
+    # Add bottom plate with open center - this provides sealing rim only
     transition = transition.union(bottom_plate)
 
     # Add female snap-fit on bottom
@@ -452,9 +549,6 @@ def create_transition_section():
 
     # Add male snap-fit on top
     transition = add_male_snap_fit(transition, sensor_width, sensor_width, TRANSITION_LENGTH + WALL_THICKNESS)
-
-    # Add o-ring groove on top
-    transition = add_oring_groove(transition, sensor_width, sensor_width, TRANSITION_LENGTH + WALL_THICKNESS)
 
     return transition
 
@@ -597,27 +691,37 @@ def create_transition_section_quadrant(quadrant=1):
         .loft(combine=True)
     )
 
-    # Create inner cavity for just this quadrant
-    # Inner starts at WALL_THICKNESS (above bottom plate) and is inset by WALL_THICKNESS
-    inner_bottom_width = quadrant_width - 2 * WALL_THICKNESS
-    inner_bottom_depth = quadrant_depth - 2 * WALL_THICKNESS
+    # Create inner cavity for just this quadrant - OPEN at bottom for airflow!
+    # Calculate the inner cavity dimensions at bottom that match the open area
+    # Use the same logic as the bottom plate opening
+    inner_bottom_x_min = max(x_min, -base_width/2 + bottom_margin)
+    inner_bottom_x_max = min(x_max, base_width/2 - bottom_margin)
+    inner_bottom_y_min = max(y_min, -base_depth/2 + bottom_margin)
+    inner_bottom_y_max = min(y_max, base_depth/2 - bottom_margin)
+
+    inner_bottom_width = inner_bottom_x_max - inner_bottom_x_min
+    inner_bottom_depth = inner_bottom_y_max - inner_bottom_y_min
+    inner_bottom_x_center = (inner_bottom_x_min + inner_bottom_x_max) / 2
+    inner_bottom_y_center = (inner_bottom_y_min + inner_bottom_y_max) / 2
+
     inner_top_width = top_quadrant_width - 2 * WALL_THICKNESS
     inner_top_depth = top_quadrant_depth - 2 * WALL_THICKNESS
 
+    # Create inner cavity starting at WALL_THICKNESS to leave bottom rim intact
     inner = (
         cq.Workplane("XY")
-        .workplane(offset=WALL_THICKNESS)  # Start above bottom plate
-        .center(x_center, y_center)
-        .rect(inner_bottom_width, inner_bottom_depth)
+        .workplane(offset=WALL_THICKNESS)  # Start just above bottom plate
+        .center(inner_bottom_x_center, inner_bottom_y_center)
+        .rect(inner_bottom_width, inner_bottom_depth)  # Open center area
         .workplane(offset=TRANSITION_LENGTH)  # Go to just below top
-        .center(top_x_center - x_center, top_y_center - y_center)
+        .center(top_x_center - inner_bottom_x_center, top_y_center - inner_bottom_y_center)
         .rect(inner_top_width, inner_top_depth)
         .loft(combine=True)
     )
 
     quadrant_transition = outer.cut(inner)
 
-    # Union with bottom plate
+    # Union with bottom plate - bottom plate already has open center
     section = bottom_plate.union(quadrant_transition)
 
     # Add bolt holes on interior edges (for joining quadrants)
@@ -657,62 +761,68 @@ def create_transition_section_quadrant(quadrant=1):
 
 def create_sensor_chamber():
     """
-    Create the sensor chamber with mounting for 1"x1" PCB sensor
+    Create the sensor chamber with mounting for 1"x1"x1mm PCB sensor
     This section has the concentrated airflow for measurement
+    OPEN at top and bottom for airflow!
+    PCB mounts VERTICALLY on two small support tabs to allow airflow around it
     """
     chamber_size = SENSOR_CHAMBER_WIDTH + 2*WALL_THICKNESS
+    pcb_thickness = 1  # mm - actual PCB thickness
 
-    # Create chamber body
+    # Create chamber body (just the walls, no top or bottom)
     chamber = (
         cq.Workplane("XY")
         .rect(chamber_size, chamber_size)
+        .rect(SENSOR_CHAMBER_WIDTH, SENSOR_CHAMBER_WIDTH)
         .extrude(SENSOR_CHAMBER_HEIGHT)
     )
 
-    # Cut internal cavity
-    chamber = (
-        chamber.faces(">Z").workplane()
-        .rect(SENSOR_CHAMBER_WIDTH, SENSOR_CHAMBER_WIDTH)
-        .cutBlind(-SENSOR_CHAMBER_HEIGHT + WALL_THICKNESS)
+    # Create vertical PCB holder - two small tabs protruding from opposite walls
+    # PCB slides between the tabs and stands vertically
+    # Tab dimensions
+    tab_width = 8  # mm - width of each tab
+    tab_height = SENSOR_PCB_SIZE + 4  # mm - slightly taller than PCB
+    tab_thickness = 2  # mm - how far tab protrudes from wall
+    tab_slot_depth = pcb_thickness / 2 + 0.2  # mm - slot cut into each tab to hold PCB edge
+
+    # Calculate tab positions (centered vertically in chamber)
+    z_center = SENSOR_CHAMBER_HEIGHT / 2
+
+    # Tab 1 - on +Y wall (one side of PCB)
+    tab1 = (
+        cq.Workplane("XZ")
+        .workplane(offset=SENSOR_CHAMBER_WIDTH/2)  # At +Y wall (inner surface)
+        .center(0, z_center)
+        .rect(tab_width, tab_height)
+        .extrude(tab_thickness)  # Protrude inward
     )
 
-    # Add sensor mount brackets - create mounting struts across chamber
-    # Horizontal strut
-    strut_h = (
-        cq.Workplane("XY")
-        .workplane(offset=SENSOR_CHAMBER_HEIGHT/2)
-        .center(0, 0)
-        .rect(SENSOR_PCB_SIZE + 10, 3)
-        .extrude(3)
+    # Cut a vertical slot in tab1 to hold PCB edge
+    tab1 = (
+        tab1.faces(">Y").workplane()
+        .center(0, z_center)
+        .rect(pcb_thickness + 0.4, tab_height - 4)  # Slot for PCB edge
+        .cutBlind(-tab_slot_depth)
     )
 
-    # Vertical strut
-    strut_v = (
-        cq.Workplane("XY")
-        .workplane(offset=SENSOR_CHAMBER_HEIGHT/2)
-        .center(0, 0)
-        .rect(3, SENSOR_PCB_SIZE + 10)
-        .extrude(3)
+    # Tab 2 - on -Y wall (opposite side of PCB)
+    tab2 = (
+        cq.Workplane("XZ")
+        .workplane(offset=-SENSOR_CHAMBER_WIDTH/2)  # At -Y wall (inner surface)
+        .center(0, z_center)
+        .rect(tab_width, tab_height)
+        .extrude(-tab_thickness)  # Protrude inward (negative direction)
     )
 
-    chamber = chamber.union(strut_h).union(strut_v)
+    # Cut a vertical slot in tab2 to hold PCB edge
+    tab2 = (
+        tab2.faces("<Y").workplane()
+        .center(0, z_center)
+        .rect(pcb_thickness + 0.4, tab_height - 4)  # Slot for PCB edge
+        .cutBlind(-tab_slot_depth)
+    )
 
-    # Add screw holes for sensor mounting
-    hole_distance = SENSOR_PCB_SIZE - 2 * SENSOR_HOLE_OFFSET
-    positions = [
-        (hole_distance/2, hole_distance/2),
-        (-hole_distance/2, hole_distance/2),
-        (hole_distance/2, -hole_distance/2),
-        (-hole_distance/2, -hole_distance/2),
-    ]
-
-    for x, y in positions:
-        chamber = (
-            chamber.faces(">Z").workplane(offset=-SENSOR_CHAMBER_HEIGHT/2)
-            .pushPoints([(x, y)])
-            .circle(SENSOR_HOLE_DIA/2)
-            .cutBlind(-10)  # Deep enough for mounting screws
-        )
+    chamber = chamber.union(tab1).union(tab2)
 
     # Add female snap-fit on bottom
     chamber = add_female_snap_fit(chamber, chamber_size, chamber_size, 0)
@@ -720,43 +830,55 @@ def create_sensor_chamber():
     # Add male snap-fit on top
     chamber = add_male_snap_fit(chamber, chamber_size, chamber_size, SENSOR_CHAMBER_HEIGHT)
 
-    # Add o-ring groove on top
-    chamber = add_oring_groove(chamber, chamber_size, chamber_size, SENSOR_CHAMBER_HEIGHT)
-
     return chamber
 
 def create_fan_adapter():
     """
     Create adapter from sensor chamber to 120mm fan mount
+    OPEN at bottom AND top for complete airflow from sensor to fan!
     """
     chamber_size = SENSOR_CHAMBER_WIDTH + 2*WALL_THICKNESS
     adapter_height = 40
+    fan_mount_thickness = 4  # Must match create_fan_mount()
 
-    # Create outer shell transition
+    # Create outer shell transition - goes all the way to top of fan mount
     outer = (
         cq.Workplane("XY")
         .rect(chamber_size, chamber_size)
-        .workplane(offset=adapter_height)
+        .workplane(offset=adapter_height + fan_mount_thickness)  # Full height including fan mount
         .rect(FAN_SIZE + 10, FAN_SIZE + 10)
         .loft(combine=True)
     )
 
-    # Create inner passage
+    # Create inner passage - OPEN at bottom AND extends to top!
+    # This ensures airflow goes all the way through
     inner = (
         cq.Workplane("XY")
-        .workplane(offset=WALL_THICKNESS)
+        .workplane(offset=0)  # Start at Z=0 - OPEN bottom!
         .rect(SENSOR_CHAMBER_WIDTH, SENSOR_CHAMBER_WIDTH)
-        .workplane(offset=adapter_height - WALL_THICKNESS)
-        .circle(FAN_SIZE/2 - 5)
+        .workplane(offset=adapter_height + fan_mount_thickness)  # Go all the way to top
+        .circle(FAN_SIZE/2 - 5)  # Fan opening size
         .loft(combine=True)
     )
 
     adapter = outer.cut(inner)
 
-    # Add fan mount on top
-    fan_mount = create_fan_mount()
-    fan_mount = fan_mount.translate((0, 0, adapter_height))
-    adapter = adapter.union(fan_mount)
+    # Add fan mounting holes at the top
+    hole_offset = FAN_MOUNT_HOLE_SPACING / 2
+    positions = [
+        (hole_offset, hole_offset),
+        (-hole_offset, hole_offset),
+        (hole_offset, -hole_offset),
+        (-hole_offset, -hole_offset),
+    ]
+
+    for x, y in positions:
+        adapter = (
+            adapter.faces(">Z").workplane()
+            .pushPoints([(x, y)])
+            .circle(FAN_MOUNT_HOLE_DIA/2)
+            .cutThruAll()
+        )
 
     # Add female snap-fit on bottom
     adapter = add_female_snap_fit(adapter, chamber_size, chamber_size, 0)
@@ -864,11 +986,20 @@ def generate_all_parts():
         print(f"        ERROR: {e}")
 
     try:
-        print("  [Bonus] Individual intake tube (print 9x)...")
+        print("  [Bonus 1] Individual intake tube with threads (print 9x)...")
         tube = create_intake_tube()
         cq.exporters.export(tube, "intake_tube.stl")
         print("        Exported: intake_tube.stl")
         parts_generated.append("intake_tube")
+    except Exception as e:
+        print(f"        ERROR: {e}")
+
+    try:
+        print("  [Bonus 2] Tube mounting nut (print 9x)...")
+        nut = create_tube_mounting_nut()
+        cq.exporters.export(nut, "tube_mounting_nut.stl")
+        print("        Exported: tube_mounting_nut.stl")
+        parts_generated.append("tube_mounting_nut")
     except Exception as e:
         print(f"        ERROR: {e}")
 
