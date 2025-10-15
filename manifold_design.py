@@ -43,8 +43,8 @@ NUT_BASE_DIA = 55  # mm (nut base diameter for gasket surface)
 NUT_THICKNESS = 8  # mm (nut thread engagement height)
 NUM_TUBES_X = 3  # tubes in X direction (fewer tubes, larger diameter)
 NUM_TUBES_Y = 3  # tubes in Y direction
-TUBE_SPACING_X = CABINET_WIDTH / (NUM_TUBES_X + 1)
-TUBE_SPACING_Y = CABINET_DEPTH / (NUM_TUBES_Y + 1)
+TUBE_SPACING_X = (MANIFOLD_BASE_SIZE-(2*TUBE_OD)) / (NUM_TUBES_X)
+TUBE_SPACING_Y = (MANIFOLD_BASE_SIZE-(2*TUBE_OD)) / (NUM_TUBES_Y)
 
 # Sensor parameters
 SENSOR_PCB_SIZE = 25.4  # mm (1 inch)
@@ -434,12 +434,18 @@ def create_manifold_base():
     base_depth = MANIFOLD_BASE_SIZE - 2 * MANIFOLD_OUTER_MARGIN
 
     # Calculate tube positions FIRST - we'll need these multiple times
+    tube_separation = (base_depth - 2*WALL_THICKNESS - 2*TUBE_OD) / (NUM_TUBES_X - 1)
+    first_tube_offet = WALL_THICKNESS + TUBE_OD
     tube_positions = []
     for i in range(NUM_TUBES_X):
         for j in range(NUM_TUBES_Y):
             # Distribute evenly, avoiding the edges
-            x = -base_width/2 + (i + 1) * (base_width / (NUM_TUBES_X + 1))
-            y = -base_depth/2 + (j + 1) * (base_depth / (NUM_TUBES_Y + 1))
+            x = -base_depth/2 + first_tube_offet + i*tube_separation
+            y = -base_depth/2 + first_tube_offet + j*tube_separation
+#            x = -base_width/2 + (i + 0.5) * ((base_width) / (NUM_TUBES_X))
+#            y = -base_depth/2 + (j + 0.5) * ((base_depth) / (NUM_TUBES_Y))
+#            x = -base_width/2 + (i + 1) * (base_width / (NUM_TUBES_X + 1))
+#            y = -base_depth/2 + (j + 1) * (base_depth / (NUM_TUBES_Y + 1))
             tube_positions.append((x, y))
 
     # Create base plate with holes under tube positions for airflow

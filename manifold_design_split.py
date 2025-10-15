@@ -66,12 +66,14 @@ def create_split_base_section(section_x, section_y):
     # Calculate which tubes belong to this section FIRST
     # Keep track of tube positions for cutting airflow holes
     tube_positions_local = []
-
+    tube_separation = (base_depth - 2*WALL_THICKNESS - 2*TUBE_OD) / (NUM_TUBES_X - 1)
+    first_tube_offet = WALL_THICKNESS + TUBE_OD
     for i in range(NUM_TUBES_X):
         for j in range(NUM_TUBES_Y):
             # Calculate tube position in global coordinates
-            tube_x = -base_width/2 + (i + 1) * (base_width / (NUM_TUBES_X + 1))
-            tube_y = -base_depth/2 + (j + 1) * (base_depth / (NUM_TUBES_Y + 1))
+
+            tube_x = -base_depth/2 + first_tube_offet + i*tube_separation
+            tube_y = -base_depth/2 + first_tube_offet + j*tube_separation
 
             # Check if tube belongs in this section (with small margin)
             section_min_x = -base_width/2 + section_x * section_width
@@ -85,6 +87,22 @@ def create_split_base_section(section_x, section_y):
                 local_x = tube_x - section_offset_x
                 local_y = tube_y - section_offset_y
                 tube_positions_local.append((local_x, local_y))
+
+    # Override tube positions for corner and edge pieces to avoid clustering
+    is_corner = (section_x == 0 and section_y == 0)
+    is_edge = (section_x == 1 and section_y == 0)
+
+    if is_corner and len(tube_positions_local) > 0:
+        # Corner piece: move tube diagonally to opposite corner
+        # Original is at bottom-left, move to top-right
+        tube_positions_local = [(first_tube_offet-section_width/2, first_tube_offet-section_width/2)]
+#        tube_positions_local = [(section_width/4, section_depth/4)]
+
+    if is_edge and len(tube_positions_local) > 0:
+        # Edge piece: move tube to opposite side
+        # Original is at center-bottom, move to center-top
+        tube_positions_local = [(0, first_tube_offet-section_width/2)]
+#        tube_positions_local = [(0, section_depth/4)]
 
     # Create base plate for this section
     section = (
@@ -112,6 +130,7 @@ def create_split_base_section(section_x, section_y):
 
     # Add tube bosses
     for local_x, local_y in tube_positions_local:
+        print(f"Tube Boss: {local_x} {local_y}")
         # Add tube boss
         boss = (
             cq.Workplane("XY")
