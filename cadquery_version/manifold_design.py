@@ -23,9 +23,8 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 # ==================== DESIGN PARAMETERS ====================
 
 # Cabinet and airflow parameters
-CABINET_WIDTH = 550  # mm (freezer top size - for reference only)
-CABINET_DEPTH = 550  # mm (freezer top size - for reference only)
-MANIFOLD_BASE_SIZE = 400  # mm (actual base size - reduced to fit 4-part split)
+CABINET_WIDTH = 550  # mm
+CABINET_DEPTH = 550  # mm
 TARGET_SPEED_MULTIPLIER = 5  # 5x magnification
 
 # Intake tubes (pierce freezer top)
@@ -57,24 +56,9 @@ FAN_HUB_DIA = 40  # mm (approximate fan hub)
 
 # Manifold geometry
 MANIFOLD_BASE_HEIGHT = 40  # mm
-TRANSITION_VERTICAL_HEIGHT = 150  # mm (vertical rise for transition)
+TRANSITION_LENGTH = 150  # mm (gradual taper for laminar flow)
 WALL_THICKNESS = 3  # mm
 MANIFOLD_OUTER_MARGIN = 20  # mm margin around tubes
-
-# Calculate actual transition length accounting for slope
-# The transition tapers from MANIFOLD_BASE_SIZE to SENSOR_CHAMBER_WIDTH
-# We need to calculate the diagonal (slant height) of the cone frustum
-def calculate_transition_length():
-    """Calculate the slant height of the transition cone"""
-    base_dim = MANIFOLD_BASE_SIZE - 2 * MANIFOLD_OUTER_MARGIN
-    top_dim = 42 + 2 * 3  # SENSOR_CHAMBER_WIDTH + 2*WALL_THICKNESS
-    horizontal_distance = (base_dim - top_dim) / 2
-    vertical_height = TRANSITION_VERTICAL_HEIGHT
-    # Pythagorean theorem: slant^2 = horizontal^2 + vertical^2
-    slant_height = math.sqrt(horizontal_distance**2 + vertical_height**2)
-    return slant_height
-
-TRANSITION_LENGTH = TRANSITION_VERTICAL_HEIGHT  # Keep vertical for loft operations
 
 # Snap-fit parameters
 SNAP_FIT_WIDTH = 6  # mm
@@ -340,9 +324,9 @@ def create_manifold_base():
     Create the base section with intake tubes
     This mounts on top of the freezer
     """
-    # Calculate base dimensions - now using MANIFOLD_BASE_SIZE instead of cabinet dimensions
-    base_width = MANIFOLD_BASE_SIZE - 2 * MANIFOLD_OUTER_MARGIN
-    base_depth = MANIFOLD_BASE_SIZE - 2 * MANIFOLD_OUTER_MARGIN
+    # Calculate base dimensions
+    base_width = CABINET_WIDTH - 2 * MANIFOLD_OUTER_MARGIN
+    base_depth = CABINET_DEPTH - 2 * MANIFOLD_OUTER_MARGIN
 
     # Create base plate
     base = (
@@ -401,8 +385,8 @@ def create_transition_section():
     This ensures laminar flow and even distribution
     NOTE: This is too tall for most printers - use create_transition_section_split() instead
     """
-    base_width = MANIFOLD_BASE_SIZE - 2 * MANIFOLD_OUTER_MARGIN
-    base_depth = MANIFOLD_BASE_SIZE - 2 * MANIFOLD_OUTER_MARGIN
+    base_width = CABINET_WIDTH - 2 * MANIFOLD_OUTER_MARGIN
+    base_depth = CABINET_DEPTH - 2 * MANIFOLD_OUTER_MARGIN
     sensor_width = SENSOR_CHAMBER_WIDTH + 2*WALL_THICKNESS
 
     # Bottom margin for connecting to base sections
@@ -470,16 +454,16 @@ def create_transition_section_quadrant(quadrant=1):
     |   1   |   2   |  (front)
     +-------+-------+
     """
-    base_width = MANIFOLD_BASE_SIZE - 2 * MANIFOLD_OUTER_MARGIN
-    base_depth = MANIFOLD_BASE_SIZE - 2 * MANIFOLD_OUTER_MARGIN
+    base_width = CABINET_WIDTH - 2 * MANIFOLD_OUTER_MARGIN
+    base_depth = CABINET_DEPTH - 2 * MANIFOLD_OUTER_MARGIN
     sensor_width = SENSOR_CHAMBER_WIDTH + 2*WALL_THICKNESS
     bottom_margin = 15  # mm solid margin around edge for sealing
 
     # Joint overlap for assembly
-    # With 360mm base (400-2*20) and 220mm bed: 360/2 = 180mm - FITS!
-    # No trimming needed, just add overlap on interior edges
+    # With 510mm base and 220mm bed: 510/2 = 255mm, need to be <= 218mm (with 2mm safety)
+    # Strategy: Trim outer edges, add small overlap on inner edges
     joint_width = 4  # mm overlap for joining pieces on interior edges
-    outer_trim = 0  # mm - no trimming needed with 400mm base!
+    outer_trim = 38  # mm to trim from each outer edge to fit print bed
     bolt_spacing = 40  # mm between bolt holes
 
     # Determine quadrant position
@@ -784,8 +768,8 @@ def generate_all_parts():
     print()
 
     # Check print bed constraints
-    base_width = MANIFOLD_BASE_SIZE - 2 * MANIFOLD_OUTER_MARGIN
-    base_depth = MANIFOLD_BASE_SIZE - 2 * MANIFOLD_OUTER_MARGIN
+    base_width = CABINET_WIDTH - 2 * MANIFOLD_OUTER_MARGIN
+    base_depth = CABINET_DEPTH - 2 * MANIFOLD_OUTER_MARGIN
 
     print(f"Base dimensions: {base_width:.1f} x {base_depth:.1f} mm")
     print(f"Transition length: {TRANSITION_LENGTH} mm")
@@ -889,8 +873,7 @@ def generate_all_parts():
     print()
     print("Assembly order:")
     print("  1. manifold_base (bottom, mounts on freezer)")
-    print(f"     NOTE: Base is {base_width}x{base_depth}mm")
-    print("     Use manifold_design_split.py for 2x2 split if needed")
+    print("     NOTE: Base is 510x510mm - use manifold_design_split.py for 3x3 split")
     print("  2. Insert intake_tube (x9) into base from below")
     print("     NOTE: Tubes are now OPEN at bottom for airflow!")
     print("  3. Assemble 4 transition quadrants together using M5 bolts:")
@@ -898,7 +881,7 @@ def generate_all_parts():
     print("     - manifold_transition_front_right")
     print("     - manifold_transition_back_left")
     print("     - manifold_transition_back_right")
-    print("     Each quadrant is ~182x182x150mm (fits 220x220 bed with 38mm margin!)")
+    print("     Each quadrant is ~219x219x150mm (trimmed to fit 220x220 bed)")
     print("  4. Attach assembled transition to base (snaps on)")
     print("     NOTE: Bottom plate has open center for airflow!")
     print("  5. manifold_sensor_chamber (snaps onto transition top)")
@@ -918,17 +901,18 @@ def generate_all_parts():
     print("Sealing: Use o-rings or silicone gasket maker between sections")
     print("Material: PETG recommended (food-safe, chemical resistant)")
     print()
-    print("IMPROVEMENTS APPLIED:")
-    print(f"  ✓ Base reduced to {MANIFOLD_BASE_SIZE}mm (from 550mm) - easier to print & assemble")
+    print("FIXES APPLIED:")
     print("  ✓ Intake tubes now open at bottom for airflow")
     print("  ✓ Transition split VERTICALLY into 4 quadrants")
-    print("    - Each quadrant: ~182x182x150mm (fits 220x220mm bed with margin!)")
-    print("    - No trimming needed - perfect fit!")
+    print("    - Each quadrant: ~219x219x150mm (fits 220x220mm bed!)")
+    print("    - Outer edges trimmed by 38mm")
     print("    - Inner edges have 4mm overlap for assembly")
-    print("  ✓ Transition starts at Z=0 (reaches bottom plate properly)")
+    print("  ✓ Transition starts at Z=0 (not floating)")
     print("  ✓ Bottom plate has open center for airflow (15mm margin)")
     print("  ✓ Bolt holes added for joining quadrants (M5 bolts every 40mm)")
-    print("  ✓ Transition length calculated for proper slope")
+    print()
+    print("NOTE: The quadrants are trimmed on outer edges to fit your printer.")
+    print("      Make sure the base is also trimmed or split to match!")
     print()
 
 if __name__ == "__main__":

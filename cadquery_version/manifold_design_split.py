@@ -14,7 +14,7 @@ import math
 
 # Import parameters from main design
 from manifold_design import (
-    MANIFOLD_BASE_SIZE, TARGET_SPEED_MULTIPLIER,
+    CABINET_WIDTH, CABINET_DEPTH, TARGET_SPEED_MULTIPLIER,
     TUBE_OD, TUBE_ID, TUBE_LENGTH, NUM_TUBES_X, NUM_TUBES_Y,
     SENSOR_PCB_SIZE, SENSOR_HOLE_DIA, SENSOR_HOLE_OFFSET, SENSOR_CHAMBER_WIDTH, SENSOR_CHAMBER_HEIGHT,
     FAN_SIZE, FAN_MOUNT_HOLE_SPACING, FAN_MOUNT_HOLE_DIA,
@@ -28,7 +28,7 @@ from manifold_design import (
     create_transition_section, create_sensor_chamber, create_fan_adapter
 )
 
-# Split parameters - 3x3 to align with 3x3 tube grid (each section gets 1 tube)
+# Split parameters
 BASE_SECTIONS_X = 3  # Number of sections in X direction
 BASE_SECTIONS_Y = 3  # Number of sections in Y direction
 BOLT_HOLE_DIA = 5  # mm (M4 bolt)
@@ -42,8 +42,8 @@ def create_split_base_section(section_x, section_y):
     section_x, section_y: indices from 0 to BASE_SECTIONS_X/Y-1
     """
     # Calculate overall base dimensions
-    base_width = MANIFOLD_BASE_SIZE - 2 * MANIFOLD_OUTER_MARGIN
-    base_depth = MANIFOLD_BASE_SIZE - 2 * MANIFOLD_OUTER_MARGIN
+    base_width = CABINET_WIDTH - 2 * MANIFOLD_OUTER_MARGIN
+    base_depth = CABINET_DEPTH - 2 * MANIFOLD_OUTER_MARGIN
 
     # Calculate section dimensions
     section_width = base_width / BASE_SECTIONS_X
@@ -213,8 +213,8 @@ def generate_split_base():
     print("="*60)
     print()
 
-    base_width = MANIFOLD_BASE_SIZE - 2 * MANIFOLD_OUTER_MARGIN
-    base_depth = MANIFOLD_BASE_SIZE - 2 * MANIFOLD_OUTER_MARGIN
+    base_width = CABINET_WIDTH - 2 * MANIFOLD_OUTER_MARGIN
+    base_depth = CABINET_DEPTH - 2 * MANIFOLD_OUTER_MARGIN
     section_width = base_width / BASE_SECTIONS_X
     section_depth = base_depth / BASE_SECTIONS_Y
 
@@ -257,22 +257,20 @@ def generate_split_base():
     print(f"Parts generated: {len(parts_generated)}/{BASE_SECTIONS_X * BASE_SECTIONS_Y}")
     print()
     print("Assembly instructions:")
-    print("1. Print all 9 base sections (each section has 1 tube)")
-    print("2. Join sections using M5 bolts (you'll need ~24 bolts)")
+    print("1. Print all 9 base sections")
+    print("2. Join sections using M4 bolts (you'll need ~24 bolts)")
     print("3. Use silicone gasket maker on all joints for air-tight seal")
-    print("4. Install 9x intake tubes from below (1 per section)")
+    print("4. Install 9x intake tubes from below")
     print("5. Attach transition section on top")
     print()
     print("Section layout (top view):")
     print("  +-------+-------+-------+")
-    print("  | 0,2   | 1,2   | 2,2   |  (back)")
+    print("  | 0,2   | 1,2   | 2,2   |")
     print("  +-------+-------+-------+")
-    print("  | 0,1   | 1,1   | 2,1   |  (middle)")
+    print("  | 0,1   | 1,1   | 2,1   |")
     print("  +-------+-------+-------+")
-    print("  | 0,0   | 1,0   | 2,0   |  (front)")
+    print("  | 0,0   | 1,0   | 2,0   |")
     print("  +-------+-------+-------+")
-    print()
-    print("NOTE: 3x3 split ensures no tube is cut by section boundaries!")
     print()
 
 if __name__ == "__main__":
