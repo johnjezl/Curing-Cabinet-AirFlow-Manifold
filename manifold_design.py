@@ -790,6 +790,29 @@ def create_transition_section_quadrant():
         slot = slot.translate((x_pos, y_max, 0))
         section = section.cut(slot)
 
+    # Add male snap-fit tabs on TOP to mate with sensor chamber
+    # The sensor chamber has female snap-fit slots that these will mate into
+    # Since the quadrant tapers to the sensor chamber size at the top, we need tabs around the top perimeter
+    # Calculate number of tabs for the top (smaller size)
+    num_tabs_top = max(1, int(top_quadrant_width / tab_spacing))
+
+    # Add tabs on the two outer edges of the top (the edges that aren't interior joining edges)
+    # Right edge (+X at top) - this is the outer edge
+    for i in range(num_tabs_top):
+        y_pos = top_y_min + (i + 0.5) * (top_quadrant_depth / num_tabs_top)
+        tab = create_snap_tab(TRANSITION_LENGTH, "X")
+        tab = tab.rotate((0, 0, 0), (0, 0, 1), 90)
+        tab = tab.translate((top_x_max, y_pos, 0))
+        section = section.union(tab)
+
+    # Front/Back edge (outer edge depending on quadrant)
+    for i in range(num_tabs_top):
+        x_pos = top_x_min + (i + 0.5) * (top_quadrant_width / num_tabs_top)
+        tab = create_snap_tab(TRANSITION_LENGTH, "Y")
+        tab = tab.rotate((0, 0, 0), (0, 0, 1), 180)
+        tab = tab.translate((x_pos, top_y_max, 0))
+        section = section.union(tab)
+
     return section
 
 def create_sensor_chamber():
@@ -797,10 +820,19 @@ def create_sensor_chamber():
     Create the sensor chamber with mounting for 1"x1"x1mm PCB sensor
     This section has the concentrated airflow for measurement
     OPEN at top and bottom for airflow!
-    PCB mounts VERTICALLY on two small support tabs to allow airflow around it
+    PCB slides into side rails from the top - rails extend just over 1 inch from top
+    Connector faces wall with cable opening for wire pass-through
     """
     chamber_size = SENSOR_CHAMBER_WIDTH + 2*WALL_THICKNESS
     pcb_thickness = 1  # mm - actual PCB thickness
+    connector_width = 4  # mm
+    connector_height = 8  # mm (long side, oriented vertically)
+
+    # Rail dimensions
+    rail_length = SENSOR_PCB_SIZE + 2  # Just over 1 inch (25.4mm) from top
+    rail_protrusion = 1.5  # mm - how far rail sticks out from wall
+    rail_thickness = 2  # mm - thickness of the rail itself
+    slot_gap = 1.0  # mm - gap between the two rails that form the slot
 
     # Create chamber body (just the walls, no top or bottom)
     chamber = (
@@ -810,52 +842,101 @@ def create_sensor_chamber():
         .extrude(SENSOR_CHAMBER_HEIGHT)
     )
 
-    # Create vertical PCB holder - two small tabs protruding from opposite walls
-    # PCB slides between the tabs and stands vertically
-    # Tab dimensions
-    tab_width = 8  # mm - width of each tab
-    tab_height = SENSOR_PCB_SIZE + 4  # mm - slightly taller than PCB
-    tab_thickness = 2  # mm - how far tab protrudes from wall
-    tab_slot_depth = pcb_thickness / 2 + 0.2  # mm - slot cut into each tab to hold PCB edge
+    # Calculate positions
+    # Rails start from top and extend down just over 1 inch
+    rail_start_z = SENSOR_CHAMBER_HEIGHT
+    rail_stop_z = SENSOR_CHAMBER_HEIGHT - rail_length
 
-    # Calculate tab positions (centered vertically in chamber)
-    z_center = SENSOR_CHAMBER_HEIGHT / 2
+    # Calculate Y position for cable opening
+    # Connector is centered on the edge of the board
+    # Board bottom is at rail_stop_z, so connector center is at rail_stop_z + SENSOR_PCB_SIZE/2
+    cable_opening_z = rail_stop_z + SENSOR_PCB_SIZE/2
 
-    # Tab 1 - on +Y wall (one side of PCB)
-    tab1 = (
+    # Create L-shaped slot system with paired rails on +Y and -Y walls
+    # Each wall gets TWO rails (forming an L-channel) for PCB edges to slide between
+    # PCB slides down from top, connector will face +Y wall
+
+    # Front slot (+Y wall) - TWO rails forming an L-channel with 1mm gap
+    # Rail 1: Left rail (on the left side of the slot)
+    rail_x_offset_left = -slot_gap/2 - rail_thickness/2  # Position left rail
+    front_rail_left = (
         cq.Workplane("XZ")
-        .workplane(offset=SENSOR_CHAMBER_WIDTH/2)  # At +Y wall (inner surface)
-        .center(0, z_center)
-        .rect(tab_width, tab_height)
-        .extrude(tab_thickness)  # Protrude inward
+        .workplane(offset=SENSOR_CHAMBER_WIDTH/2 - rail_protrusion)  # Inner surface of wall
+        .rect(rail_thickness, rail_length)
+        .extrude(rail_protrusion)
+        .translate((rail_x_offset_left, 0, SENSOR_CHAMBER_HEIGHT - rail_length/2))
     )
+    chamber = chamber.union(front_rail_left)
 
-    # Cut a vertical slot in tab1 to hold PCB edge
-    tab1 = (
-        tab1.faces(">Y").workplane()
-        .center(0, z_center)
-        .rect(pcb_thickness + 0.4, tab_height - 4)  # Slot for PCB edge
-        .cutBlind(-tab_slot_depth)
-    )
-
-    # Tab 2 - on -Y wall (opposite side of PCB)
-    tab2 = (
+    # Rail 2: Right rail (on the right side of the slot) - 1mm gap from left rail
+    rail_x_offset_right = slot_gap/2 + rail_thickness/2  # Position right rail
+    front_rail_right = (
         cq.Workplane("XZ")
-        .workplane(offset=-SENSOR_CHAMBER_WIDTH/2)  # At -Y wall (inner surface)
-        .center(0, z_center)
-        .rect(tab_width, tab_height)
-        .extrude(-tab_thickness)  # Protrude inward (negative direction)
+        .workplane(offset=SENSOR_CHAMBER_WIDTH/2 - rail_protrusion)  # Same Y position as left rail
+        .rect(rail_thickness, rail_length)
+        .extrude(rail_protrusion)
+        .translate((rail_x_offset_right, 0, SENSOR_CHAMBER_HEIGHT - rail_length/2))
     )
+    chamber = chamber.union(front_rail_right)
 
-    # Cut a vertical slot in tab2 to hold PCB edge
-    tab2 = (
-        tab2.faces("<Y").workplane()
-        .center(0, z_center)
-        .rect(pcb_thickness + 0.4, tab_height - 4)  # Slot for PCB edge
-        .cutBlind(-tab_slot_depth)
+    # Back slot (-Y wall) - TWO rails forming an L-channel with 1mm gap
+    # Rail 1: Left rail
+    back_rail_left = (
+        cq.Workplane("XZ")
+        .workplane(offset=-SENSOR_CHAMBER_WIDTH/2)  # Inner surface of wall
+        .rect(rail_thickness, rail_length)
+        .extrude(rail_protrusion)
+        .translate((rail_x_offset_left, 0, SENSOR_CHAMBER_HEIGHT - rail_length/2))
     )
+    chamber = chamber.union(back_rail_left)
 
-    chamber = chamber.union(tab1).union(tab2)
+    # Rail 2: Right rail - 1mm gap from left rail
+    back_rail_right = (
+        cq.Workplane("XZ")
+        .workplane(offset=-SENSOR_CHAMBER_WIDTH/2)  # Same Y position as left rail
+        .rect(rail_thickness, rail_length)
+        .extrude(rail_protrusion)
+        .translate((rail_x_offset_right, 0, SENSOR_CHAMBER_HEIGHT - rail_length/2))
+    )
+    chamber = chamber.union(back_rail_right)
+
+    # Add stops at bottom of BOTH slots so PCB doesn't fall through
+    stop_thickness = 2  # mm
+
+    # Front slot stop - positioned between the two rails
+    front_stop = (
+        cq.Workplane("XY")
+        .workplane(offset=rail_stop_z)
+        .rect(slot_gap + rail_thickness, stop_thickness)  # Span from left rail to right rail
+        .extrude(stop_thickness)
+        .translate((0, SENSOR_CHAMBER_WIDTH/2 - rail_protrusion/2, 0))
+    )
+    chamber = chamber.union(front_stop)
+
+    # Back slot stop - positioned between the two rails
+    back_stop = (
+        cq.Workplane("XY")
+        .workplane(offset=rail_stop_z)
+        .rect(slot_gap + rail_thickness, stop_thickness)  # Span from left rail to right rail
+        .extrude(stop_thickness)
+        .translate((0, -SENSOR_CHAMBER_WIDTH/2 + rail_protrusion/2, 0))
+    )
+    chamber = chamber.union(back_stop)
+
+    # Add cable opening on +Y wall for connector wire pass-through
+    # Connector is centered along the edge of the board (Y direction), facing the +Y wall
+    # The connector is offset to align with the right rail
+    # Opening is 4mm wide x 8mm tall (long side vertical)
+    # Must cut ALL THE WAY through the chamber wall (and through the right rail)
+    cable_opening_x_offset = rail_x_offset_right  # Align with right rail position
+    cable_opening = (
+        cq.Workplane("XZ")
+        .workplane(offset=chamber_size/2 + 2)  # Start outside the OUTER wall
+        .center(cable_opening_x_offset, cable_opening_z)
+        .rect(connector_width, connector_height)  # 4mm x 8mm, long side vertical
+        .extrude(-(WALL_THICKNESS + SENSOR_CHAMBER_WIDTH + 2))  # Cut all the way through chamber
+    )
+    chamber = chamber.cut(cable_opening)
 
     # Add female snap-fit on bottom
     chamber = add_female_snap_fit(chamber, chamber_size, chamber_size, 0)
