@@ -154,22 +154,47 @@ def create_intake_tube():
         .extrude(-2)  # Cut groove downward from top
     )
 
-    # Add external threads at bottom for nut
-    # CadQuery doesn't have built-in threading, so we'll create a simplified thread
-    # using helical grooves approximated with multiple angled cuts
-    num_threads = int(THREAD_LENGTH / THREAD_PITCH)
+    # Add external threads at bottom for nut - TRUE HELICAL THREADS
+    # Create a helical thread groove by sweeping a triangular profile along a helix path
+    thread_start_z = -(TUBE_LENGTH - THREAD_LENGTH)
+    num_turns = THREAD_LENGTH / THREAD_PITCH
 
-    for i in range(num_threads):
-        z_position = -(TUBE_LENGTH - THREAD_LENGTH) - i * THREAD_PITCH
-        # Create a ring groove for each thread
-        groove = (
-            cq.Workplane("XY")
-            .workplane(offset=z_position)
-            .circle(TUBE_OD/2)
-            .circle(TUBE_OD/2 - THREAD_DEPTH)
-            .extrude(-THREAD_PITCH * 0.6)  # Groove depth
-        )
-        tube = tube.cut(groove)
+    # Generate helix path points
+    helix_points = []
+    steps_per_turn = 60  # Smooth helix
+    total_steps = int(num_turns * steps_per_turn)
+
+    for i in range(total_steps + 1):
+        angle = (i / steps_per_turn) * 2 * math.pi  # radians
+        z = thread_start_z - (i / total_steps) * THREAD_LENGTH
+        radius = TUBE_OD/2 - THREAD_DEPTH/2
+        x = radius * math.cos(angle)
+        y = radius * math.sin(angle)
+        helix_points.append((x, y, z))
+
+    # Create the helix wire path
+    helix_wire = cq.Wire.makeHelix(
+        pitch=THREAD_PITCH,
+        height=THREAD_LENGTH,
+        radius=TUBE_OD/2 - THREAD_DEPTH/2,
+        center=(0, 0, thread_start_z),
+        dir=(0, 0, -1)
+    )
+
+    # Create thread profile (triangular groove cross-section)
+    # Profile is perpendicular to the tube surface
+    thread_profile = (
+        cq.Workplane("XZ")
+        .center(TUBE_OD/2 - THREAD_DEPTH/2, thread_start_z)
+        .moveTo(0, -THREAD_DEPTH * 0.8)
+        .lineTo(-THREAD_PITCH * 0.4, 0)
+        .lineTo(THREAD_PITCH * 0.4, 0)
+        .close()
+    )
+
+    # Sweep the profile along the helix
+    thread_groove = thread_profile.sweep(helix_wire)
+    tube = tube.cut(thread_groove)
 
     return tube
 
@@ -215,19 +240,33 @@ def create_tube_mounting_nut():
         .cutThruAll()
     )
 
-    # Cut internal threads (grooves on the inside wall)
-    # These grooves are CUT from the inside surface to create internal threads
-    for i in range(int(NUT_THICKNESS / THREAD_PITCH)):
-        z_position = WALL_THICKNESS + hex_height + i * THREAD_PITCH
-        # Create ring groove that cuts INTO the inner surface
-        groove = (
-            cq.Workplane("XY")
-            .workplane(offset=z_position)
-            .circle(TUBE_OD/2 + 0.3 + THREAD_DEPTH)  # Extends inward from bore
-            .circle(TUBE_OD/2 + 0.3)  # Inner edge at bore surface
-            .extrude(THREAD_PITCH * 0.6)
-        )
-        nut = nut.cut(groove)  # CUT the groove, not union!
+    # Cut internal threads - TRUE HELICAL THREADS
+    # Create helical thread groove that cuts into the inner wall
+    thread_start_z = WALL_THICKNESS + hex_height
+    num_turns = NUT_THICKNESS / THREAD_PITCH
+
+    # Create the helix wire path (internal, going upward)
+    helix_wire = cq.Wire.makeHelix(
+        pitch=THREAD_PITCH,
+        height=NUT_THICKNESS,
+        radius=TUBE_OD/2 + 0.3 + THREAD_DEPTH/2,  # Internal thread radius
+        center=(0, 0, thread_start_z),
+        dir=(0, 0, 1)  # Upward direction
+    )
+
+    # Create thread profile (triangular groove cross-section for internal threads)
+    thread_profile = (
+        cq.Workplane("XZ")
+        .center(TUBE_OD/2 + 0.3 + THREAD_DEPTH/2, thread_start_z)
+        .moveTo(0, -THREAD_DEPTH * 0.8)
+        .lineTo(-THREAD_PITCH * 0.4, 0)
+        .lineTo(THREAD_PITCH * 0.4, 0)
+        .close()
+    )
+
+    # Sweep the profile along the helix to create internal thread groove
+    thread_groove = thread_profile.sweep(helix_wire)
+    nut = nut.cut(thread_groove)
 
     return nut
 
@@ -558,10 +597,13 @@ def create_transition_section():
 
     return transition
 
-def create_transition_section_quadrant(quadrant=1):
+def create_transition_section_quadrant():
     """
     Create one quadrant of the transition section split vertically into 4 pieces
-    quadrant: 1-4 (1=front-left, 2=front-right, 3=back-left, 4=back-right)
+    This allows printing on smaller beds by splitting the tall transition into 4 parts
+    Each quadrant covers one quarter of the base and tapers to one quarter of the sensor chamber
+    Quadrant are symmetrical and can be rotated to form the full transition
+    
 
     The transition is split like this (top view):
     +-------+-------+
@@ -573,195 +615,180 @@ def create_transition_section_quadrant(quadrant=1):
     base_width = MANIFOLD_BASE_SIZE - 2 * MANIFOLD_OUTER_MARGIN
     base_depth = MANIFOLD_BASE_SIZE - 2 * MANIFOLD_OUTER_MARGIN
     sensor_width = SENSOR_CHAMBER_WIDTH + 2*WALL_THICKNESS
-    bottom_margin = 15  # mm solid margin around edge for sealing
-
+ 
     # Joint overlap for assembly
     # With 360mm base (400-2*20) and 220mm bed: 360/2 = 180mm - FITS!
     # No trimming needed, just add overlap on interior edges
     joint_width = 4  # mm overlap for joining pieces on interior edges
     outer_trim = 0  # mm - no trimming needed with 400mm base!
+
+    # Assembly parameters
     bolt_spacing = 40  # mm between bolt holes
 
-    # Determine quadrant position
-    # Quadrant 1: x<0, y<0 (front-left)
-    # Quadrant 2: x>0, y<0 (front-right)
-    # Quadrant 3: x<0, y>0 (back-left)
-    # Quadrant 4: x>0, y>0 (back-right)
-
-    is_right = quadrant in [2, 4]  # x > 0
-    is_back = quadrant in [3, 4]   # y > 0
-
-    # Create bottom plate quadrant with open center
     # Split the base into 4 quadrants
     plate_half_width = base_width / 2
     plate_half_depth = base_depth / 2
 
     # Determine the extents for this quadrant
-    # Start with half dimensions, then trim outer edges and add overlap on inner edges
-    x_min = 0 if is_right else -plate_half_width
-    x_max = plate_half_width if is_right else 0
-    y_min = 0 if is_back else -plate_half_depth
-    y_max = plate_half_depth if is_back else 0
+    # No overlap on interior edges - sloped surfaces extend all the way to center
+    x_min = 0
+    x_max = plate_half_width
+    y_min = 0
+    y_max = plate_half_depth
 
-    # Trim outer edges to fit print bed
-    if not is_right:  # Left edge (x min)
-        x_min += outer_trim
-    else:  # Right edge (x max)
-        x_max -= outer_trim
-
-    if not is_back:  # Front edge (y min)
-        y_min += outer_trim
-    else:  # Back edge (y max)
-        y_max -= outer_trim
-
-    # Add small joint overlap on interior edges only
-    if is_right:
-        x_min -= joint_width / 2
-    else:
-        x_max += joint_width / 2
-
-    if is_back:
-        y_min -= joint_width / 2
-    else:
-        y_max += joint_width / 2
+    # NO joint overlap - pieces meet exactly at X=0 and Y=0 for tight mating of sloped surfaces
 
     quadrant_width = x_max - x_min
     quadrant_depth = y_max - y_min
     x_center = (x_min + x_max) / 2
     y_center = (y_min + y_max) / 2
 
-    # Create bottom plate for this quadrant
-    bottom_plate = (
-        cq.Workplane("XY")
-        .center(x_center, y_center)
-        .rect(quadrant_width, quadrant_depth)
-        .extrude(WALL_THICKNESS)
-    )
-
-    # Cut center opening if not near the outer edge
-    # Only cut if we're not at the outer perimeter
-    inner_x_min = max(x_min, -base_width/2 + bottom_margin)
-    inner_x_max = min(x_max, base_width/2 - bottom_margin)
-    inner_y_min = max(y_min, -base_depth/2 + bottom_margin)
-    inner_y_max = min(y_max, base_depth/2 - bottom_margin)
-
-    if inner_x_max > inner_x_min and inner_y_max > inner_y_min:
-        inner_width = inner_x_max - inner_x_min
-        inner_depth = inner_y_max - inner_y_min
-        inner_x_center = (inner_x_min + inner_x_max) / 2
-        inner_y_center = (inner_y_min + inner_y_max) / 2
-
-        bottom_plate = (
-            bottom_plate.faces(">Z").workplane()
-            .center(inner_x_center - x_center, inner_y_center - y_center)
-            .rect(inner_width, inner_depth)
-            .cutThruAll()
-        )
-
-    # Create the tapered transition for this specific quadrant
-    # Calculate dimensions at bottom and top of transition
-
-    # At bottom (z = WALL_THICKNESS), the quadrant should match our x_min/x_max extents
-    # At top (z = TRANSITION_LENGTH + WALL_THICKNESS), calculate the tapered size
-
-    # The full transition goes from base_width to sensor_width over TRANSITION_LENGTH
-    # We need to figure out what portion of sensor_width this quadrant represents
-
     # Calculate the width at the top for this quadrant
-    # The sensor opening is in the center, so all quadrants converge toward it
     top_width_full = sensor_width
-    # Each quadrant at the top should be sensor_width / 2 (plus small overlap)
     top_half = top_width_full / 2
 
     # Determine top extents for this quadrant
-    top_x_min = -top_half if not is_right else -joint_width / 2
-    top_x_max = top_half if is_right else joint_width / 2
-    top_y_min = -top_half if not is_back else -joint_width / 2
-    top_y_max = top_half if is_back else joint_width / 2
+    # No overlap - each quadrant extends to centerline (X=0, Y=0) at the top too
+    top_x_min = -joint_width / 2
+    top_x_max = top_half
+    top_y_min = -joint_width / 2
+    top_y_max = top_half
 
     top_quadrant_width = top_x_max - top_x_min
     top_quadrant_depth = top_y_max - top_y_min
     top_x_center = (top_x_min + top_x_max) / 2
     top_y_center = (top_y_min + top_y_max) / 2
 
-    # Create outer shell for just this quadrant
-    # Start at Z=0 (bottom of the plate) and go to top
+    # Create outer shell for just this quadrant - COMPLETELY OPEN AT BOTTOM
     outer = (
         cq.Workplane("XY")
-        .workplane(offset=0)  # Start at Z=0, same as bottom plate
+        .workplane(offset=0)  # Start at Z=0 for open bottom
         .center(x_center, y_center)
         .rect(quadrant_width, quadrant_depth)
-        .workplane(offset=TRANSITION_LENGTH + WALL_THICKNESS)  # Go to full height
-        .center(top_x_center - x_center, top_y_center - y_center)  # Relative movement
+        .workplane(offset=TRANSITION_LENGTH)
+        .center(top_x_center - x_center, top_y_center - y_center)
         .rect(top_quadrant_width, top_quadrant_depth)
         .loft(combine=True)
     )
 
-    # Create inner cavity for just this quadrant - OPEN at bottom for airflow!
-    # Calculate the inner cavity dimensions at bottom that match the open area
-    # Use the same logic as the bottom plate opening
-    inner_bottom_x_min = max(x_min, -base_width/2 + bottom_margin)
-    inner_bottom_x_max = min(x_max, base_width/2 - bottom_margin)
-    inner_bottom_y_min = max(y_min, -base_depth/2 + bottom_margin)
-    inner_bottom_y_max = min(y_max, base_depth/2 - bottom_margin)
-
-    inner_bottom_width = inner_bottom_x_max - inner_bottom_x_min
-    inner_bottom_depth = inner_bottom_y_max - inner_bottom_y_min
-    inner_bottom_x_center = (inner_bottom_x_min + inner_bottom_x_max) / 2
-    inner_bottom_y_center = (inner_bottom_y_min + inner_bottom_y_max) / 2
-
+    # Create inner cavity - ALSO starts at Z=0 for completely open bottom
+    inner_bottom_width = quadrant_width - 2 * WALL_THICKNESS
+    inner_bottom_depth = quadrant_depth - 2 * WALL_THICKNESS
     inner_top_width = top_quadrant_width - 2 * WALL_THICKNESS
     inner_top_depth = top_quadrant_depth - 2 * WALL_THICKNESS
 
-    # Create inner cavity starting at WALL_THICKNESS to leave bottom rim intact
     inner = (
         cq.Workplane("XY")
-        .workplane(offset=WALL_THICKNESS)  # Start just above bottom plate
-        .center(inner_bottom_x_center, inner_bottom_y_center)
-        .rect(inner_bottom_width, inner_bottom_depth)  # Open center area
-        .workplane(offset=TRANSITION_LENGTH)  # Go to just below top
-        .center(top_x_center - inner_bottom_x_center, top_y_center - inner_bottom_y_center)
+        .workplane(offset=0)  # Start at Z=0 - COMPLETELY OPEN!
+        .center(x_center, y_center)
+        .rect(inner_bottom_width, inner_bottom_depth)
+        .workplane(offset=TRANSITION_LENGTH)
+        .center(top_x_center - x_center, top_y_center - y_center)
         .rect(inner_top_width, inner_top_depth)
         .loft(combine=True)
     )
 
-    quadrant_transition = outer.cut(inner)
+    section = outer.cut(inner)
 
-    # Union with bottom plate - bottom plate already has open center
-    section = bottom_plate.union(quadrant_transition)
+    # Cut away upper half of interior edges to allow airflow
+    # The interior edges (at X=0 and Y=0) should only have walls for the lower half
+    closed_height = TRANSITION_LENGTH / 2  # Lower half has walls
+    open_height = TRANSITION_LENGTH / 2  # Upper half is open
+    closed_width = TRANSITION_VERTICAL_HEIGHT / 2  # Inner half has walls
+    open_width = TRANSITION_VERTICAL_HEIGHT / 2  # Inner half is open
+
+    # Cut away lower, outer quadrant from interior X edge (at x=0)
+    # Draw rectangular cutout
+    cutout_x = (
+        cq.Workplane("YZ")
+        .workplane(offset=0)
+        .center(TRANSITION_LENGTH/4-WALL_THICKNESS/2, TRANSITION_VERTICAL_HEIGHT/4)
+        .rect(TRANSITION_LENGTH/2+WALL_THICKNESS, TRANSITION_VERTICAL_HEIGHT/2)  # Slightly oversized to ensure clean cut
+        .extrude(WALL_THICKNESS, both=True)  # Cut through wall thickness
+    )
+    section = section.cut(cutout_x)
+
+    # Cut away upper half from interior X edge 
+    # Draw triangular cutout to match slope
+    cutout_x2 = (
+        cq.Workplane("YZ")
+        .workplane(offset=0)
+        .moveTo(-WALL_THICKNESS, TRANSITION_VERTICAL_HEIGHT/2)
+        # Define the vertices of the triangle and create a closed wire
+        .lineTo(-WALL_THICKNESS, TRANSITION_VERTICAL_HEIGHT + 23).lineTo(2*TRANSITION_LENGTH/3-2,TRANSITION_VERTICAL_HEIGHT/2).close() 
+        # Extrude the wire to create a 3D triangular prism
+        .extrude(WALL_THICKNESS, both=True)  # Cut through wall thickness
+    )
+    section = section.cut(cutout_x2)
+
+    # Cut away lower, outer quadrant from interior Y edge (at y=0)
+    # Draw rectangular cutout
+    cutout_y = (
+        cq.Workplane("XZ")
+        .workplane(offset=0)
+        .center(TRANSITION_LENGTH/4-WALL_THICKNESS/2, TRANSITION_VERTICAL_HEIGHT/4)
+        .rect(TRANSITION_LENGTH/2+WALL_THICKNESS, TRANSITION_VERTICAL_HEIGHT/2)  # Slightly oversized to ensure clean cut
+        .extrude(WALL_THICKNESS, both=True)  # Cut through wall thickness
+    )
+    section = section.cut(cutout_y)
+
+    # Cut away upper half from interior Y edge 
+    # Draw triangular cutout to match slope
+    cutout_y2 = (
+        cq.Workplane("XZ")
+        .workplane(offset=0)
+        .moveTo(-WALL_THICKNESS, TRANSITION_VERTICAL_HEIGHT/2)
+        # Define the vertices of the triangle and create a closed wire
+        .lineTo(-WALL_THICKNESS, TRANSITION_VERTICAL_HEIGHT + 23).lineTo(2*TRANSITION_LENGTH/3-2,TRANSITION_VERTICAL_HEIGHT/2).close() 
+        # Extrude the wire to create a 3D triangular prism
+        .extrude(WALL_THICKNESS, both=True)  # Cut through wall thickness
+    )
+    section = section.cut(cutout_y2)
 
     # Add bolt holes on interior edges (for joining quadrants)
-    total_height = TRANSITION_LENGTH + WALL_THICKNESS
+    # Only in the lower half where walls exist
+    total_height = closed_height
 
-    # Interior edge in X direction (at x=0)
-    if not (is_right and not is_back):  # All except quadrant 2 edge
-        num_bolts = max(2, int(total_height / bolt_spacing))
-        for i in range(num_bolts):
-            z_pos = WALL_THICKNESS + (i + 1) * (total_height - WALL_THICKNESS) / (num_bolts + 1)
-            hole_x = 0 if is_right else 0
-            hole = (
-                cq.Workplane("YZ")
-                .workplane(offset=hole_x)
-                .center(y_center, z_pos)
-                .circle(2.5)  # M5 bolt clearance
-                .extrude(20, both=True)
-            )
-            section = section.cut(hole)
+    # Interior edge in X and Y directions (at x=0, y=0)
+    num_bolts = 2
+    for i in range(num_bolts):
+        z_pos = (i + 1) * total_height / (num_bolts + 1)
+        hole_x = 0
+        hole = (
+            cq.Workplane("YZ")
+            .workplane(offset=hole_x)
+            .center(y_center, z_pos)
+            .circle(2.5)  # M5 bolt clearance
+            .extrude(20, both=True)
+        )
+        section = section.cut(hole)
+        hole = (
+            cq.Workplane("XZ")
+            .workplane(offset=hole_x)
+            .center(y_center, z_pos)
+            .circle(2.5)  # M5 bolt clearance
+            .extrude(20, both=True)
+        )
+        section = section.cut(hole)
 
-    # Interior edge in Y direction (at y=0)
-    if not (is_back and not is_right):  # All except quadrant 3 edge
-        num_bolts = max(2, int(total_height / bolt_spacing))
-        for i in range(num_bolts):
-            z_pos = WALL_THICKNESS + (i + 1) * (total_height - WALL_THICKNESS) / (num_bolts + 1)
-            hole_y = 0 if is_back else 0
-            hole = (
-                cq.Workplane("XZ")
-                .workplane(offset=hole_y)
-                .center(x_center, z_pos)
-                .circle(2.5)  # M5 bolt clearance
-                .extrude(20, both=True)
-            )
-            section = section.cut(hole)
+    # Add female snap-fit slots on bottom OUTER edges to mate with base pieces
+    # The base pieces have male snap-fit tabs on their perimeter
+    tab_spacing = 60  # mm (must match base pieces)
+    num_tabs = max(2, int(quadrant_width / tab_spacing))
+
+    for i in range(num_tabs):
+        y_pos = y_min + (i + 0.5)  * (quadrant_depth / num_tabs)
+        slot = create_snap_slot(0)  # At bottom (Z=0)
+        slot = slot.rotate((0, 0, 0), (0, 0, 1), 90)
+        slot = slot.translate((x_max, y_pos, 0))
+        section = section.cut(slot)
+
+    for i in range(num_tabs):
+        x_pos = x_min + (i + 0.5)  * (quadrant_width / num_tabs)
+        slot = create_snap_slot(0)  # At bottom (Z=0)
+        slot = slot.rotate((0, 0, 0), (0, 0, 1), 180)
+        slot = slot.translate((x_pos, y_max, 0))
+        section = section.cut(slot)
 
     return section
 
@@ -954,20 +981,12 @@ def generate_all_parts():
         print("  [2/4] Transition section (base to sensor chamber) - QUADRANT SPLIT...")
         print("        This section is split vertically into 4 quadrants")
 
-        quadrant_names = [
-            "front_left",
-            "front_right",
-            "back_left",
-            "back_right"
-        ]
-
-        for i in range(1, 5):
-            print(f"        Generating quadrant {i} ({quadrant_names[i-1]})...")
-            quadrant = create_transition_section_quadrant(quadrant=i)
-            filename = f"manifold_transition_{quadrant_names[i-1]}.stl"
-            cq.exporters.export(quadrant, filename)
-            print(f"        Exported: {filename}")
-            parts_generated.append(f"manifold_transition_{quadrant_names[i-1]}")
+        print(f"        Generating symmetric quadrant piece...")
+        quadrant = create_transition_section_quadrant()
+        filename = f"manifold_transition_quadrant.stl"
+        cq.exporters.export(quadrant, filename)
+        print(f"        Exported: {filename}")
+        parts_generated.append(f"manifold_transition_quadrant")
     except Exception as e:
         print(f"        ERROR: {e}")
         import traceback
@@ -1031,26 +1050,26 @@ def generate_all_parts():
     print("  2. Insert intake_tube (x9) into base from below")
     print("     NOTE: Tubes are now OPEN at bottom for airflow!")
     print("  3. Assemble 4 transition quadrants together using M5 bolts:")
-    print("     - manifold_transition_front_left")
-    print("     - manifold_transition_front_right")
-    print("     - manifold_transition_back_left")
-    print("     - manifold_transition_back_right")
-    print("     Each quadrant is ~182x182x150mm (fits 220x220 bed with 38mm margin!)")
-    print("  4. Attach assembled transition to base (snaps on)")
-    print("     NOTE: Bottom plate has open center for airflow!")
-    print("  5. manifold_sensor_chamber (snaps onto transition top)")
+    print("     - Print 4 copies of manifold_transition_quadrant.stl")
+    print("     - All 4 pieces are IDENTICAL - just rotate 90° for each position")
+    print("     - Each quadrant is ~182x182x150mm (fits 220x220 bed with margin!)")
+    print("     - Bolt together on interior edges")
+    print("  4. Attach assembled transition to base")
+    print("     NOTE: Transition is COMPLETELY OPEN at bottom for airflow!")
+    print("  5. manifold_sensor_chamber (on top of transition)")
     print("  6. Install sensor PCB in chamber")
-    print("  7. manifold_fan_adapter (top, snaps onto chamber)")
+    print("  7. manifold_fan_adapter (top, onto chamber)")
     print("  8. Mount 120mm fan on top")
     print()
-    print("Transition quadrant layout (top view):")
+    print("Transition assembly (top view):")
     print("  +-------+-------+")
-    print("  | back_ | back_ |  (back)")
-    print("  | left  | right |")
+    print("  |   Q   |   Q   |  (back)")
+    print("  | (270°)| (180°)|")
     print("  +-------+-------+")
-    print("  |front_ |front_ |  (front)")
-    print("  | left  | right |")
+    print("  |   Q   |   Q   |  (front)")
+    print("  | (0°)  | (90°) |")
     print("  +-------+-------+")
+    print("  Q = Same piece, rotated")
     print()
     print("Sealing: Use o-rings or silicone gasket maker between sections")
     print("Material: PETG recommended (food-safe, chemical resistant)")
