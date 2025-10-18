@@ -33,8 +33,9 @@ TARGET_SPEED_MULTIPLIER = 5  # 5x magnification
 # With 3x3 = 9 tubes at 35mm ID: area = 9 * pi * (17.5)^2 = 8659 mm²
 # Sensor chamber: 42mm x 42mm = 1764 mm²
 # Ratio: 8659 / 1764 = 4.9x ≈ 5x ✓
-TUBE_OD = 38  # mm outer diameter (larger tubes for better flow)
+TUBE_OD = 39.5  # mm outer diameter (wall thickness increased 50% for strength)
 TUBE_ID = 35  # mm inner diameter
+TUBE_FLANGE_DIA = 45  # mm diameter of flange at top of tube
 TUBE_LENGTH = 60  # mm (accommodate 1.5-2.5 inch / 38-64mm freezer top)
 THREAD_LENGTH = 20  # mm (threaded portion at bottom of tube)
 THREAD_PITCH = 2.5  # mm (ISO coarse thread pitch for M38)
@@ -129,34 +130,38 @@ def verify_speed_multiplier():
 def create_intake_tube():
     """
     Create a single intake tube that points DOWN into the freezer
-    Tube is inserted from below the base and extends down into freezer
+    Tube is inserted from above, drops down into boss cavity
+    Flange catches on boss bottom rim, nut secures from below
     Has external threads at bottom for mounting nut inside freezer
     """
+    # Create flange at top (Z=0)
+    flange = (
+        cq.Workplane("XY")
+        .circle(TUBE_FLANGE_DIA/2)
+        .extrude(-WALL_THICKNESS)  # Flange thickness
+    )
+
     # Create outer cylinder pointing DOWN (-Z direction)
     tube = (
         cq.Workplane("XY")
+        .workplane(offset=-WALL_THICKNESS)  # Start below flange
         .circle(TUBE_OD/2)
         .extrude(-TUBE_LENGTH)  # Negative to extrude downward
     )
 
-    # Cut inner hole - open at top (Z=0)
+    # Combine flange and tube
+    tube = flange.union(tube)
+
+    # Cut inner hole through flange and tube - open at top (Z=0)
     tube = (
         tube.faces(">Z").workplane()  # Work from top face at Z=0
         .circle(TUBE_ID/2)
-        .cutBlind(-(TUBE_LENGTH))  
-    )
-
-    # Add groove for o-ring/gasket at top (Z=0) for sealing against freezer
-    tube = (
-        tube.faces(">Z").workplane()
-        .circle(TUBE_OD/2 + 1)
-        .circle(TUBE_OD/2 - 0.5)
-        .extrude(-2)  # Cut groove downward from top
+        .cutBlind(-(TUBE_LENGTH + WALL_THICKNESS))  # Cut through flange and tube
     )
 
     # Add external threads at bottom for nut - TRUE HELICAL THREADS
     # Create a helical thread groove by sweeping a triangular profile along a helix path
-    thread_start_z = -(TUBE_LENGTH - THREAD_LENGTH)
+    thread_start_z = -(WALL_THICKNESS + TUBE_LENGTH - THREAD_LENGTH)
     num_turns = THREAD_LENGTH / THREAD_PITCH
 
     # Generate helix path points
@@ -242,13 +247,15 @@ def create_tube_mounting_nut():
 
     # Cut internal threads - TRUE HELICAL THREADS
     # Create helical thread groove that cuts into the inner wall
+    # Threads need to go ALL THE WAY through the threaded section
     thread_start_z = WALL_THICKNESS + hex_height
-    num_turns = NUT_THICKNESS / THREAD_PITCH
+    thread_total_height = NUT_THICKNESS  # Full height of threaded section
+    num_turns = thread_total_height / THREAD_PITCH
 
-    # Create the helix wire path (internal, going upward)
+    # Create the helix wire path (internal, going upward through entire threaded section)
     helix_wire = cq.Wire.makeHelix(
         pitch=THREAD_PITCH,
-        height=NUT_THICKNESS,
+        height=thread_total_height,  # Go all the way through
         radius=TUBE_OD/2 + 0.3 + THREAD_DEPTH/2,  # Internal thread radius
         center=(0, 0, thread_start_z),
         dir=(0, 0, 1)  # Upward direction
@@ -269,45 +276,6 @@ def create_tube_mounting_nut():
     nut = nut.cut(thread_groove)
 
     return nut
-
-def create_sensor_mount():
-    """Create sensor PCB mounting bracket with screw holes"""
-    mount_base_size = SENSOR_PCB_SIZE + 10
-    mount_thickness = 3
-
-    # Calculate hole positions
-    hole_distance = SENSOR_PCB_SIZE - 2 * SENSOR_HOLE_OFFSET
-
-    mount = (
-        cq.Workplane("XY")
-        .rect(mount_base_size, mount_base_size)
-        .extrude(mount_thickness)
-    )
-
-    # Add screw holes at corners
-    positions = [
-        (hole_distance/2, hole_distance/2),
-        (-hole_distance/2, hole_distance/2),
-        (hole_distance/2, -hole_distance/2),
-        (-hole_distance/2, -hole_distance/2),
-    ]
-
-    for x, y in positions:
-        mount = (
-            mount.faces(">Z").workplane()
-            .pushPoints([(x, y)])
-            .circle(SENSOR_HOLE_DIA/2)
-            .cutThruAll()
-        )
-
-    # Cut center opening for airflow - leave room for sensor element
-    mount = (
-        mount.faces(">Z").workplane()
-        .rect(SENSOR_PCB_SIZE - 8, SENSOR_PCB_SIZE - 8)
-        .cutThruAll()
-    )
-
-    return mount
 
 def create_fan_mount():
     """Create 120mm fan mounting interface"""
@@ -494,14 +462,8 @@ def create_manifold_base():
         .extrude(WALL_THICKNESS)
     )
 
-    # Cut airflow holes in base plate - do this BEFORE adding bosses
-    for x, y in tube_positions:
-        base = (
-            base.faces(">Z").workplane()  # Work from top of base plate
-            .pushPoints([(x, y)])
-            .circle(TUBE_ID/2)  # Match inner diameter of tube
-            .cutThruAll()  # Cut through base plate
-        )
+    # DON'T cut airflow holes yet - we'll create them as part of the boss stepped hole design
+    # The stepped hole in each boss will handle both the tube clearance and airflow
 
     # Create collection chamber walls above base
     base = (
@@ -511,24 +473,40 @@ def create_manifold_base():
         .extrude(MANIFOLD_BASE_HEIGHT)
     )
 
-    # Add tube mounting bosses with through holes
+    # Add tube mounting bosses with stepped holes for captured flange design
     for x, y in tube_positions:
-        # Create boss
+        # Create boss with ID large enough to accommodate flange
+        boss_id = TUBE_FLANGE_DIA + 0.5  # mm clearance for flange to drop in
+        boss_od = boss_id + 2 * WALL_THICKNESS  # Boss outer wall
+
         boss = (
             cq.Workplane("XY")
             .workplane(offset=0)
             .moveTo(x, y)
-            .circle(TUBE_OD/2 + 3)
+            .circle(boss_od/2)
             .extrude(MANIFOLD_BASE_HEIGHT + WALL_THICKNESS)
         )
-        # Cut hole for tube
+
+        # Cut main cavity (ID) for flange to fit into - but leave bottom rim
         boss = (
             boss.faces(">Z").workplane()
             .moveTo(x, y)
-            .circle(TUBE_OD/2 + 0.2)  # Slight clearance for tube insertion
-            .cutThruAll()
+            .circle(boss_id/2)
+            .cutBlind(-(MANIFOLD_BASE_HEIGHT))  # Stop WALL_THICKNESS from bottom
         )
+
+        # Union the boss to the base FIRST
         base = base.union(boss)
+
+        # Cut smaller hole through the bottom rim for tube body (stepped hole)
+        airflow_hole = (
+            cq.Workplane("XY")
+            .workplane(offset=-WALL_THICKNESS)
+            .moveTo(x, y)
+            .circle(TUBE_OD/2 + 0.2)
+            .extrude(WALL_THICKNESS*2)
+        )
+        base = base.cut(airflow_hole)
 
     # Add snap-fit male connectors on top edge
     base = add_male_snap_fit(base, base_width, base_depth, MANIFOLD_BASE_HEIGHT + WALL_THICKNESS)
@@ -830,9 +808,10 @@ def create_sensor_chamber():
 
     # Rail dimensions
     rail_length = SENSOR_PCB_SIZE + 2  # Just over 1 inch (25.4mm) from top
-    rail_protrusion = 1.5  # mm - how far rail sticks out from wall
+    pcb_slot_width = 25.4 + 1  # 1 inch + tolerance for PCB to fit between arms
+    rail_arm_length = (SENSOR_CHAMBER_WIDTH - pcb_slot_width) / 2  # Arms extend inward to create 1" gap
     rail_thickness = 2  # mm - thickness of the rail itself
-    slot_gap = 1.0  # mm - gap between the two rails that form the slot
+    slot_gap = 2.0  # mm - gap between the two rails that form the slot (increased from 1mm)
 
     # Create chamber body (just the walls, no top or bottom)
     chamber = (
@@ -853,73 +832,133 @@ def create_sensor_chamber():
     cable_opening_z = rail_stop_z + SENSOR_PCB_SIZE/2
 
     # Create L-shaped slot system with paired rails on +Y and -Y walls
-    # Each wall gets TWO rails (forming an L-channel) for PCB edges to slide between
+    # Rails are mounted on arms that extend from the walls inward
+    # This creates a 1" (26.4mm) gap for the PCB to fit between
     # PCB slides down from top, connector will face +Y wall
 
-    # Front slot (+Y wall) - TWO rails forming an L-channel with 1mm gap
-    # Rail 1: Left rail (on the left side of the slot)
-    rail_x_offset_left = -slot_gap/2 - rail_thickness/2  # Position left rail
-    front_rail_left = (
-        cq.Workplane("XZ")
-        .workplane(offset=SENSOR_CHAMBER_WIDTH/2 - rail_protrusion)  # Inner surface of wall
-        .rect(rail_thickness, rail_length)
-        .extrude(rail_protrusion)
-        .translate((rail_x_offset_left, 0, SENSOR_CHAMBER_HEIGHT - rail_length/2))
-    )
-    chamber = chamber.union(front_rail_left)
+    # Calculate rail positions
+    # Center the slot, then offset each rail by half the gap plus half thickness
+    rail_x_offset_left = -slot_gap/2 - rail_thickness/2  # Left rail position
+    rail_x_offset_right = slot_gap/2 + rail_thickness/2  # Right rail position
 
-    # Rail 2: Right rail (on the right side of the slot) - 1mm gap from left rail
-    rail_x_offset_right = slot_gap/2 + rail_thickness/2  # Position right rail
-    front_rail_right = (
-        cq.Workplane("XZ")
-        .workplane(offset=SENSOR_CHAMBER_WIDTH/2 - rail_protrusion)  # Same Y position as left rail
-        .rect(rail_thickness, rail_length)
-        .extrude(rail_protrusion)
-        .translate((rail_x_offset_right, 0, SENSOR_CHAMBER_HEIGHT - rail_length/2))
-    )
-    chamber = chamber.union(front_rail_right)
+    # Front wall (+Y) - Create arms with upper portion removed (for cable opening clearance)
+    # Both arms start partway down from the top (not at the very top)
+    front_arm_height = rail_length / 2  # Only lower half
 
-    # Back slot (-Y wall) - TWO rails forming an L-channel with 1mm gap
-    # Rail 1: Left rail
-    back_rail_left = (
-        cq.Workplane("XZ")
-        .workplane(offset=-SENSOR_CHAMBER_WIDTH/2)  # Inner surface of wall
-        .rect(rail_thickness, rail_length)
-        .extrude(rail_protrusion)
-        .translate((rail_x_offset_left, 0, SENSOR_CHAMBER_HEIGHT - rail_length/2))
+    # Full length arm on side without cable opening
+    full_arm_side_with_no_opening = (
+        cq.Workplane("XY")
+        .workplane(offset=SENSOR_CHAMBER_HEIGHT)
+        .center(rail_x_offset_left, SENSOR_CHAMBER_WIDTH/2 - rail_arm_length/2)
+        .rect(rail_thickness, rail_arm_length)
+        .extrude(-rail_length)  # Extend down to rail_stop_z
     )
-    chamber = chamber.union(back_rail_left)
+    chamber = chamber.union(full_arm_side_with_no_opening)
 
-    # Rail 2: Right rail - 1mm gap from left rail
-    back_rail_right = (
-        cq.Workplane("XZ")
-        .workplane(offset=-SENSOR_CHAMBER_WIDTH/2)  # Same Y position as left rail
-        .rect(rail_thickness, rail_length)
-        .extrude(rail_protrusion)
-        .translate((rail_x_offset_right, 0, SENSOR_CHAMBER_HEIGHT - rail_length/2))
+    # Full length stop on side without cable opening
+    full_arm_side_with_no_opening = (
+        cq.Workplane("XY")
+        .workplane(offset=SENSOR_CHAMBER_HEIGHT)
+        .center((rail_x_offset_left + rail_x_offset_right)/2, SENSOR_CHAMBER_WIDTH/2 - (rail_arm_length-2)/2)
+        .rect(rail_thickness, rail_arm_length)
+        .extrude(-rail_length)  # Extend down to rail_stop_z
     )
-    chamber = chamber.union(back_rail_right)
+    chamber = chamber.union(full_arm_side_with_no_opening)
+
+    # Half length arm on side without cable opening
+    half_arm_side_with_no_opening = (
+        cq.Workplane("XY")
+        .workplane(offset=rail_stop_z + front_arm_height)
+        .center(rail_x_offset_right, SENSOR_CHAMBER_WIDTH/2 - rail_arm_length/2)
+        .rect(rail_thickness, rail_arm_length)
+        .extrude(-rail_length/2)  # Extend down to rail_stop_z
+    )
+    chamber = chamber.union(half_arm_side_with_no_opening)
+
+    # Full length arm on side with cable opening
+    full_arm_side_with_opening = (
+        cq.Workplane("XY")
+        .workplane(offset=SENSOR_CHAMBER_HEIGHT)
+        .center(rail_x_offset_left, -SENSOR_CHAMBER_WIDTH/2 + rail_arm_length/2)
+        .rect(rail_thickness, rail_arm_length)
+        .extrude(-rail_length)  # Extend down to rail_stop_z
+    )
+    chamber = chamber.union(full_arm_side_with_opening)
+
+    # Full length stop on side with cable opening
+    full_arm_side_with_opening = (
+        cq.Workplane("XY")
+        .workplane(offset=SENSOR_CHAMBER_HEIGHT)
+        .center((rail_x_offset_left + rail_x_offset_right)/2, -SENSOR_CHAMBER_WIDTH/2 + (rail_arm_length-2)/2)
+        .rect(rail_thickness, rail_arm_length)
+        .extrude(-rail_length)  # Extend down to rail_stop_z
+    )
+    chamber = chamber.union(full_arm_side_with_opening)
+
+    # Half length arm on side with cable opening
+    half_arm_side_with_opening = (
+        cq.Workplane("XY")
+        .workplane(offset=rail_stop_z + front_arm_height)
+        .center(rail_x_offset_right, -SENSOR_CHAMBER_WIDTH/2 + rail_arm_length/2)
+        .rect(rail_thickness, rail_arm_length)
+        .extrude(-rail_length/2)  # Extend down to rail_stop_z
+    )
+    chamber = chamber.union(half_arm_side_with_opening)
+
+    # Arm for right rail (lower half only)
+#    front_arm_right = (
+#        cq.Workplane("XY")
+#        .workplane(offset=rail_stop_z + front_arm_height)  # Start partway down
+#        .center(rail_x_offset_right, SENSOR_CHAMBER_WIDTH/2 - rail_arm_length/2)
+#        .rect(rail_thickness, rail_arm_length)
+#        .extrude(-front_arm_height)  # Extend down to rail_stop_z
+#    )
+#    chamber = chamber.union(front_arm_right)
+
+    # Back wall (-Y) - Create arms and rails
+    # Arm for left rail
+    # ***Long arm on side with cable opening
+#    back_arm_left = (
+#        cq.Workplane("XY")
+##        .workplane(offset=SENSOR_CHAMBER_HEIGHT)
+#        .workplane(offset=rail_stop_z + front_arm_height)  # Start partway down
+#        .center(rail_x_offset_left, -SENSOR_CHAMBER_WIDTH/2 + rail_arm_length/2)
+#        .rect(rail_thickness, rail_arm_length)
+#        .extrude(-rail_length)
+#    )
+#    chamber = chamber.union(back_arm_left)
+
+    # Arm for right rail
+#    back_arm_right = (
+#        cq.Workplane("XY")
+##        .workplane(offset=SENSOR_CHAMBER_HEIGHT)
+#        .workplane(offset=rail_stop_z + front_arm_height)  # Start partway down
+#        .center(rail_x_offset_right, -SENSOR_CHAMBER_WIDTH/2 + rail_arm_length/2)
+#        .rect(rail_thickness, rail_arm_length)
+#        .extrude(-rail_length)
+#    )
+#    chamber = chamber.union(back_arm_right)
 
     # Add stops at bottom of BOTH slots so PCB doesn't fall through
     stop_thickness = 2  # mm
 
-    # Front slot stop - positioned between the two rails
+    # Front slot stop - connects between the two arms
     front_stop = (
         cq.Workplane("XY")
         .workplane(offset=rail_stop_z)
-        .rect(slot_gap + rail_thickness, stop_thickness)  # Span from left rail to right rail
+        .center(0, SENSOR_CHAMBER_WIDTH/2 - rail_arm_length)
+        .rect(slot_gap + rail_thickness, stop_thickness)
         .extrude(stop_thickness)
-        .translate((0, SENSOR_CHAMBER_WIDTH/2 - rail_protrusion/2, 0))
     )
     chamber = chamber.union(front_stop)
 
-    # Back slot stop - positioned between the two rails
+    # Back slot stop - connects between the two arms
     back_stop = (
         cq.Workplane("XY")
         .workplane(offset=rail_stop_z)
-        .rect(slot_gap + rail_thickness, stop_thickness)  # Span from left rail to right rail
+        .center(0, -SENSOR_CHAMBER_WIDTH/2 + rail_arm_length)
+        .rect(slot_gap + rail_thickness, stop_thickness)
         .extrude(stop_thickness)
-        .translate((0, -SENSOR_CHAMBER_WIDTH/2 + rail_protrusion/2, 0))
     )
     chamber = chamber.union(back_stop)
 

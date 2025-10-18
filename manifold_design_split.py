@@ -15,7 +15,7 @@ import math
 # Import parameters from main design
 from manifold_design import (
     MANIFOLD_BASE_SIZE, TARGET_SPEED_MULTIPLIER,
-    TUBE_OD, TUBE_ID, TUBE_LENGTH, NUM_TUBES_X, NUM_TUBES_Y,
+    TUBE_OD, TUBE_ID, TUBE_FLANGE_DIA, TUBE_LENGTH, NUM_TUBES_X, NUM_TUBES_Y,
     SENSOR_PCB_SIZE, SENSOR_HOLE_DIA, SENSOR_HOLE_OFFSET, SENSOR_CHAMBER_WIDTH, SENSOR_CHAMBER_HEIGHT,
     FAN_SIZE, FAN_MOUNT_HOLE_SPACING, FAN_MOUNT_HOLE_DIA,
     MANIFOLD_BASE_HEIGHT, TRANSITION_LENGTH, WALL_THICKNESS, MANIFOLD_OUTER_MARGIN,
@@ -111,14 +111,8 @@ def create_split_base_section(section_x, section_y):
         .extrude(WALL_THICKNESS)
     )
 
-    # Cut airflow holes in base plate BEFORE adding chamber walls
-    for local_x, local_y in tube_positions_local:
-        section = (
-            section.faces(">Z").workplane()  # Work from top of base plate
-            .pushPoints([(local_x, local_y)])
-            .circle(TUBE_ID/2)  # Match inner diameter of tube
-            .cutThruAll()  # Cut through base plate
-        )
+    # DON'T cut airflow holes yet - we'll create them as part of the boss stepped hole design
+    # The stepped hole in each boss will handle both the tube clearance and airflow
 
     # Create collection chamber walls
     section = (
@@ -128,25 +122,43 @@ def create_split_base_section(section_x, section_y):
         .extrude(MANIFOLD_BASE_HEIGHT)
     )
 
-    # Add tube bosses
+    # Add tube bosses with stepped holes for captured flange design
     for local_x, local_y in tube_positions_local:
         print(f"Tube Boss: {local_x} {local_y}")
-        # Add tube boss
+        # Create boss with ID large enough to accommodate flange
+        boss_id = TUBE_FLANGE_DIA + 0.5  # mm clearance for flange to drop in
+        boss_od = boss_id + 2 * WALL_THICKNESS  # Boss outer wall
+
         boss = (
             cq.Workplane("XY")
             .workplane(offset=0)
             .moveTo(local_x, local_y)
-            .circle(TUBE_OD/2 + 3)
+            .circle(boss_od/2)
             .extrude(MANIFOLD_BASE_HEIGHT + WALL_THICKNESS)
         )
-        # Cut hole for tube
+
+        # Cut main cavity (ID) for flange to fit into - but leave bottom rim
+        # Cut smaller hole through the bottom rim for tube body (stepped hole)
         boss = (
             boss.faces(">Z").workplane()
             .moveTo(local_x, local_y)
-            .circle(TUBE_OD/2 + 0.2)
-            .cutThruAll()
+            .circle(boss_id/2)
+            .cutBlind(-(MANIFOLD_BASE_HEIGHT))  # Stop WALL_THICKNESS from bottom
         )
+
+        # Union the boss to the section FIRST
         section = section.union(boss)
+
+        # NOW cut the stepped hole through the bottom rim AFTER the union
+        # This ensures the cut propagates through the combined geometry
+        airflow_hole = (
+            cq.Workplane("XY")
+            .workplane(offset=-WALL_THICKNESS)
+            .moveTo(local_x, local_y)
+            .circle(TUBE_OD/2 + 0.2)
+            .extrude(WALL_THICKNESS*2)
+        )
+        section = section.cut(airflow_hole)
 
     # Determine piece type
     is_center = (section_x == 1 and section_y == 1)
@@ -513,7 +525,9 @@ def generate_split_base():
     print("1. Print all 9 base sections (each section has 1 tube)")
     print("2. Join sections using M5 bolts (you'll need ~24 bolts)")
     print("3. Use silicone gasket maker on all joints for air-tight seal")
-    print("4. Install 9x intake tubes from below (1 per section)")
+    print("4. Install 9x intake tubes from ABOVE (drop into tube bosses)")
+    print("   - Tube flange drops into boss cavity and catches on bottom rim")
+    print("   - Secure each tube with mounting nut from below freezer")
     print("5. Attach transition section on top")
     print()
     print("Section layout (top view):")
