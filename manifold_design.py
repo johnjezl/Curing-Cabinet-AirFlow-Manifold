@@ -809,7 +809,7 @@ def create_sensor_chamber():
     # Rail dimensions
     rail_length = SENSOR_PCB_SIZE + 2  # Just over 1 inch (25.4mm) from top
     pcb_slot_width = 25.4 + 1  # 1 inch + tolerance for PCB to fit between arms
-    rail_arm_length = (SENSOR_CHAMBER_WIDTH - pcb_slot_width) / 2  # Arms extend inward to create 1" gap
+    rail_arm_length = (SENSOR_CHAMBER_WIDTH - (pcb_slot_width/2)) / 2  # Arms extend inward to create 1" gap
     rail_thickness = 2  # mm - thickness of the rail itself
     slot_gap = 2.0  # mm - gap between the two rails that form the slot (increased from 1mm)
 
