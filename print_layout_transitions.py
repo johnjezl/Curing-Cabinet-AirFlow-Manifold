@@ -11,10 +11,8 @@ Step 4: Position bottom corner as close to adjacent side as possible
 """
 
 import cadquery as cq
-import sys
-import io
 
-# Import the transition quadrant creation function BEFORE fixing stdout
+# Import the transition quadrant creation function
 # (manifold_design.py already does the stdout fix)
 from manifold_design import create_transition_section_quadrant, TRANSITION_LENGTH
 
@@ -105,8 +103,6 @@ def create_print_layout():
     # The quadrant spans in Y from 0 to 180, so it's already positioned
     # Just need to ensure it's sitting on Z=0 and near X=0, Y=0 corner
 
-    quadrant = quadrant.translate((0, 0, 0))  # May need adjustment after checking geometry
-
     print(f"  Positioned quadrant:")
     print(f"    - Narrow end (top) near build plate edges")
     print(f"    - Wide end (bottom) extends into build volume")
@@ -128,45 +124,52 @@ def create_print_layout():
     platform_width = 3  # mm
     platform_height = 5  # mm
 
+    # Support interface pattern parameters
+    interface_spacing = 0.8  # mm spacing between interface lines
+    interface_width = 0.4  # mm width of each interface line
+    interface_depth = 0.2  # mm depth of grooves
+
+    def create_platform_with_interface(x_center, y_center, width, length, height):
+        """Create a platform with support interface pattern on top"""
+        # Create base platform
+        platform = (
+            cq.Workplane("XY")
+            .workplane(offset=0)
+            .center(x_center, y_center)
+            .rect(width, length)
+            .extrude(height)
+        )
+
+        # Add interface pattern on top - alternating grooves
+        # Create grooves running perpendicular to the platform length (along X direction)
+        num_grooves = int(length / interface_spacing)
+        for i in range(num_grooves):
+            y_pos = y_center - length/2 + i * interface_spacing
+            groove = (
+                cq.Workplane("XY")
+                .workplane(offset=height - interface_depth)
+                .center(x_center, y_pos)
+                .rect(width + 0.2, interface_width)  # Slightly wider than platform
+                .extrude(interface_depth)
+            )
+            platform = platform.cut(groove)
+
+        return platform
+
     # Create 3 parallel platforms running along Y axis
     # Each is 110mm long, spaced 20mm apart in Y direction
 
     # Platform 1 - runs along Y axis (x-most platform) - now 10mm tall
-    # Starting at X=-3, Y=0, running to Y=110, then moved -160mm+80mm+10mm+10mm+10mm=-50mm in X
-    platform1 = (
-        cq.Workplane("XY")
-        .workplane(offset=0)
-        .center(-3-160+80+10+10+10, 55)  # Center at X=-53, Y midpoint (110/2 = 55)
-        .rect(platform_width, 110)  # 3mm wide, 110mm long in Y
-        .extrude(10)  # 10mm tall
-    )
+    platform1 = create_platform_with_interface(-3-160+80+10+10+10+10, 55, platform_width, 110, 10)
 
     # Platform 1b - duplicate of platform 1, 20mm in positive X direction from platform 1
-    platform1b = (
-        cq.Workplane("XY")
-        .workplane(offset=0)
-        .center(-3-160+80+10+10+10+20, 55)  # X=-33, Y=55
-        .rect(platform_width, 110)  # 3mm wide, 110mm long in Y
-        .extrude(10)  # 10mm tall
-    )
+    platform1b = create_platform_with_interface(-3-160+80+10+10+10+20, 55, platform_width, 110, 10)
 
-    # Platform 2 - 20mm in negative Y from platform 1, then moved +20mm Y, -20mm X, then +10mm X, then +5mm X
-    platform2 = (
-        cq.Workplane("XY")
-        .workplane(offset=0)
-        .center(-3-20+10+5, 35+20)  # X=-8, Y=55 (35+20)
-        .rect(platform_width, 110)  # 3mm wide, 110mm long in Y
-        .extrude(platform_height)  # 5mm tall
-    )
+    # Platform 2 - 5mm tall
+    platform2 = create_platform_with_interface(-3-20+10+5, 55, platform_width, 110, platform_height)
 
-    # Platform 3 - 20mm in negative Y from platform 2, then moved +40mm Y, -40mm X from original, then +10mm X, then +5mm X
-    platform3 = (
-        cq.Workplane("XY")
-        .workplane(offset=0)
-        .center(-3-40+10+5, 15+40)  # X=-28, Y=55 (15+40)
-        .rect(platform_width, 110)  # 3mm wide, 110mm long in Y
-        .extrude(platform_height)  # 5mm tall
-    )
+    # Platform 3 - 5mm tall
+    platform3 = create_platform_with_interface(-3-40+10+5, 55, platform_width, 110, platform_height)
 
     # Combine platforms
     l_platform = platform1.union(platform1b).union(platform2).union(platform3)
@@ -177,12 +180,14 @@ def create_print_layout():
     # Move platform: 150mm in X direction, 180mm in positive Y direction
     l_platform = l_platform.translate((150, 180, 0))
 
-    print(f"  Created 4 platforms:")
+    print(f"  Created 4 platforms with support interface pattern:")
     print(f"    - Width: {platform_width}mm")
     print(f"    - Platform 1 & 1b: 10mm tall (x-most platforms)")
     print(f"    - Platform 1b: +20mm X from Platform 1")
     print(f"    - Platforms 2 & 3: 5mm tall")
     print(f"    - Each platform: 110mm long along Y axis")
+    print(f"    - Top surface: grooved pattern ({interface_spacing}mm spacing, {interface_depth}mm deep)")
+    print(f"    - Pattern prevents adhesion to quadrants (easy removal)")
     print(f"    - Platform 1: Base position")
     print(f"    - Platform 2: +20mm Y, -20mm X from parallel spacing")
     print(f"    - Platform 3: +40mm Y, -40mm X from parallel spacing")
@@ -265,7 +270,8 @@ def create_print_layout():
     print("Platform details:")
     print(f"  - Platforms 1 & 1b: 10mm tall")
     print(f"  - Platforms 2 & 3: 5mm tall")
-    print(f"  - Can be easily removed after printing")
+    print(f"  - Support interface texture on top surfaces")
+    print(f"  - Easy separation from quadrants - no adhesion!")
     print()
     print("Print this layout once, then print 1 more quadrant separately = 4 total!")
     print()

@@ -96,13 +96,11 @@ def create_split_base_section(section_x, section_y):
         # Corner piece: move tube diagonally to opposite corner
         # Original is at bottom-left, move to top-right
         tube_positions_local = [(first_tube_offet-section_width/2, first_tube_offet-section_width/2)]
-#        tube_positions_local = [(section_width/4, section_depth/4)]
 
     if is_edge and len(tube_positions_local) > 0:
         # Edge piece: move tube to opposite side
         # Original is at center-bottom, move to center-top
         tube_positions_local = [(0, first_tube_offet-section_width/2)]
-#        tube_positions_local = [(0, section_depth/4)]
 
     # Create base plate for this section
     section = (

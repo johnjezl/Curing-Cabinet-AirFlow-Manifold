@@ -36,8 +36,8 @@ TARGET_SPEED_MULTIPLIER = 5  # 5x magnification
 TUBE_OD = 39.5  # mm outer diameter (wall thickness increased 50% for strength)
 TUBE_ID = 35  # mm inner diameter
 TUBE_FLANGE_DIA = 45  # mm diameter of flange at top of tube
-TUBE_LENGTH = 60  # mm (accommodate 1.5-2.5 inch / 38-64mm freezer top)
-THREAD_LENGTH = 20  # mm (threaded portion at bottom of tube)
+TUBE_LENGTH = 79.05  # mm (60mm + 0.75 inches = 60 + 19.05mm; accommodate up to 3.1 inch freezer top)
+THREAD_LENGTH = 40  # mm (threaded portion at bottom of tube - doubled for better engagement)
 THREAD_PITCH = 2.5  # mm (ISO coarse thread pitch for M38)
 THREAD_DEPTH = 1.2  # mm (depth of thread grooves)
 NUT_BASE_DIA = 55  # mm (nut base diameter for gasket surface)
@@ -454,10 +454,6 @@ def create_manifold_base():
             # Distribute evenly, avoiding the edges
             x = -base_depth/2 + first_tube_offet + i*tube_separation
             y = -base_depth/2 + first_tube_offet + j*tube_separation
-#            x = -base_width/2 + (i + 0.5) * ((base_width) / (NUM_TUBES_X))
-#            y = -base_depth/2 + (j + 0.5) * ((base_depth) / (NUM_TUBES_Y))
-#            x = -base_width/2 + (i + 1) * (base_width / (NUM_TUBES_X + 1))
-#            y = -base_depth/2 + (j + 1) * (base_depth / (NUM_TUBES_Y + 1))
             tube_positions.append((x, y))
 
     # Create base plate with holes under tube positions for airflow
