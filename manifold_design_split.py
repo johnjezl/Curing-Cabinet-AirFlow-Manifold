@@ -14,19 +14,12 @@ import math
 
 # Import parameters from main design
 from manifold_design import (
-    MANIFOLD_BASE_SIZE, TARGET_SPEED_MULTIPLIER,
-    TUBE_OD, TUBE_ID, TUBE_FLANGE_DIA, TUBE_LENGTH, NUM_TUBES_X, NUM_TUBES_Y,
-    SENSOR_PCB_SIZE, SENSOR_HOLE_DIA, SENSOR_HOLE_OFFSET, SENSOR_CHAMBER_WIDTH, SENSOR_CHAMBER_HEIGHT,
-    FAN_SIZE, FAN_MOUNT_HOLE_SPACING, FAN_MOUNT_HOLE_DIA,
-    MANIFOLD_BASE_HEIGHT, TRANSITION_LENGTH, WALL_THICKNESS, MANIFOLD_OUTER_MARGIN,
-    SNAP_FIT_WIDTH, SNAP_FIT_HEIGHT, SNAP_FIT_DEPTH, SNAP_FIT_TAPER, SNAP_FIT_CLEARANCE,
-    ORING_GROOVE_WIDTH, ORING_GROOVE_DEPTH,
-    MAX_PRINT_X, MAX_PRINT_Y, MAX_PRINT_Z,
-    calculate_intake_area, calculate_sensor_area, verify_speed_multiplier,
-    add_male_snap_fit, add_female_snap_fit, add_oring_groove,
-    create_snap_tab, create_snap_slot,
-    create_intake_tube, create_sensor_mount, create_fan_mount,
-    create_transition_section, create_sensor_chamber, create_fan_adapter
+    MANIFOLD_BASE_SIZE,
+    TUBE_OD, NUM_TUBES_X, NUM_TUBES_Y,
+    MANIFOLD_BASE_HEIGHT, WALL_THICKNESS, MANIFOLD_OUTER_MARGIN,
+    MAX_PRINT_X, MAX_PRINT_Y, TUBE_FLANGE_DIA,
+    verify_speed_multiplier,
+    create_snap_tab
 )
 
 # Split parameters - 3x3 to align with 3x3 tube grid (each section gets 1 tube)

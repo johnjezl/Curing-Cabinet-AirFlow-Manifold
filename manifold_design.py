@@ -23,8 +23,6 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 # ==================== DESIGN PARAMETERS ====================
 
 # Cabinet and airflow parameters
-CABINET_WIDTH = 550  # mm (freezer top size - for reference only)
-CABINET_DEPTH = 550  # mm (freezer top size - for reference only)
 MANIFOLD_BASE_SIZE = 400  # mm (actual base size - reduced to fit 4-part split)
 TARGET_SPEED_MULTIPLIER = 5  # 5x magnification
 
@@ -44,8 +42,6 @@ NUT_BASE_DIA = 55  # mm (nut base diameter for gasket surface)
 NUT_THICKNESS = 8  # mm (nut thread engagement height)
 NUM_TUBES_X = 3  # tubes in X direction (fewer tubes, larger diameter)
 NUM_TUBES_Y = 3  # tubes in Y direction
-TUBE_SPACING_X = (MANIFOLD_BASE_SIZE-(2*TUBE_OD)) / (NUM_TUBES_X)
-TUBE_SPACING_Y = (MANIFOLD_BASE_SIZE-(2*TUBE_OD)) / (NUM_TUBES_Y)
 
 # Sensor parameters
 SENSOR_PCB_SIZE = 25.4  # mm (1 inch)
@@ -58,26 +54,12 @@ SENSOR_CHAMBER_HEIGHT = 80  # mm
 FAN_SIZE = 120  # mm (standard 120mm fan)
 FAN_MOUNT_HOLE_SPACING = 105  # mm (standard 120mm fan mounting)
 FAN_MOUNT_HOLE_DIA = 4.5  # mm
-FAN_HUB_DIA = 40  # mm (approximate fan hub)
 
 # Manifold geometry
 MANIFOLD_BASE_HEIGHT = 40  # mm
 TRANSITION_VERTICAL_HEIGHT = 150  # mm (vertical rise for transition)
 WALL_THICKNESS = 3  # mm
 MANIFOLD_OUTER_MARGIN = 20  # mm margin around tubes
-
-# Calculate actual transition length accounting for slope
-# The transition tapers from MANIFOLD_BASE_SIZE to SENSOR_CHAMBER_WIDTH
-# We need to calculate the diagonal (slant height) of the cone frustum
-def calculate_transition_length():
-    """Calculate the slant height of the transition cone"""
-    base_dim = MANIFOLD_BASE_SIZE - 2 * MANIFOLD_OUTER_MARGIN
-    top_dim = 42 + 2 * 3  # SENSOR_CHAMBER_WIDTH + 2*WALL_THICKNESS
-    horizontal_distance = (base_dim - top_dim) / 2
-    vertical_height = TRANSITION_VERTICAL_HEIGHT
-    # Pythagorean theorem: slant^2 = horizontal^2 + vertical^2
-    slant_height = math.sqrt(horizontal_distance**2 + vertical_height**2)
-    return slant_height
 
 TRANSITION_LENGTH = TRANSITION_VERTICAL_HEIGHT  # Keep vertical for loft operations
 
@@ -87,8 +69,6 @@ SNAP_FIT_HEIGHT = 8  # mm
 SNAP_FIT_DEPTH = 2  # mm
 SNAP_FIT_TAPER = 0.3  # mm taper for insertion
 SNAP_FIT_CLEARANCE = 0.3  # mm clearance for fit
-ORING_GROOVE_WIDTH = 3  # mm
-ORING_GROOVE_DEPTH = 1.5  # mm
 
 # Print bed constraints
 MAX_PRINT_X = 240  # mm (with safety margin)
@@ -282,42 +262,6 @@ def create_tube_mounting_nut():
 
     return nut
 
-def create_fan_mount():
-    """Create 120mm fan mounting interface"""
-    fan_mount_thickness = 4
-
-    mount = (
-        cq.Workplane("XY")
-        .rect(FAN_SIZE + 10, FAN_SIZE + 10)
-        .extrude(fan_mount_thickness)
-    )
-
-    # Cut center hole for airflow
-    mount = (
-        mount.faces(">Z").workplane()
-        .circle(FAN_SIZE/2 - 5)
-        .cutThruAll()
-    )
-
-    # Add mounting holes at standard 120mm fan positions
-    hole_offset = FAN_MOUNT_HOLE_SPACING / 2
-    positions = [
-        (hole_offset, hole_offset),
-        (-hole_offset, hole_offset),
-        (hole_offset, -hole_offset),
-        (-hole_offset, -hole_offset),
-    ]
-
-    for x, y in positions:
-        mount = (
-            mount.faces(">Z").workplane()
-            .pushPoints([(x, y)])
-            .circle(FAN_MOUNT_HOLE_DIA/2)
-            .cutThruAll()
-        )
-
-    return mount
-
 # ==================== SNAP-FIT HELPERS ====================
 
 def add_male_snap_fit(part, width, depth, at_height):
@@ -420,20 +364,6 @@ def create_snap_slot(base_height):
     )
     return slot
 
-def add_oring_groove(part, width, depth, at_height):
-    """Add o-ring groove for sealing around perimeter"""
-    groove = (
-        cq.Workplane("XY")
-        .workplane(offset=at_height - ORING_GROOVE_DEPTH)
-        .rect(width - 2*WALL_THICKNESS + ORING_GROOVE_WIDTH,
-              depth - 2*WALL_THICKNESS + ORING_GROOVE_WIDTH)
-        .rect(width - 2*WALL_THICKNESS - ORING_GROOVE_WIDTH,
-              depth - 2*WALL_THICKNESS - ORING_GROOVE_WIDTH)
-        .extrude(ORING_GROOVE_DEPTH)
-    )
-    part = part.cut(groove)
-    return part
-
 # ==================== MAIN MANIFOLD SECTIONS ====================
 
 def create_manifold_base():
@@ -513,68 +443,6 @@ def create_manifold_base():
     base = add_male_snap_fit(base, base_width, base_depth, MANIFOLD_BASE_HEIGHT + WALL_THICKNESS)
 
     return base
-
-def create_transition_section():
-    """
-    Create the transition section that gradually narrows from base to sensor chamber
-    This ensures laminar flow and even distribution
-    NOTE: This is too tall for most printers - use create_transition_section_split() instead
-    """
-    base_width = MANIFOLD_BASE_SIZE - 2 * MANIFOLD_OUTER_MARGIN
-    base_depth = MANIFOLD_BASE_SIZE - 2 * MANIFOLD_OUTER_MARGIN
-    sensor_width = SENSOR_CHAMBER_WIDTH + 2*WALL_THICKNESS
-
-    # Bottom margin for connecting to base sections
-    bottom_margin = 15  # mm solid margin around edge for sealing
-
-    # Create bottom plate with open center for airflow
-    bottom_plate = (
-        cq.Workplane("XY")
-        .rect(base_width, base_depth)
-        .extrude(WALL_THICKNESS)
-    )
-
-    # Cut center opening, leaving margin around edges for connection
-    bottom_plate = (
-        bottom_plate.faces(">Z").workplane()
-        .rect(base_width - 2*bottom_margin, base_depth - 2*bottom_margin)
-        .cutThruAll()
-    )
-
-    # Create outer shell with taper - starting from bottom plate
-    outer = (
-        cq.Workplane("XY")
-        .workplane(offset=WALL_THICKNESS)  # Start above bottom plate
-        .rect(base_width, base_depth)
-        .workplane(offset=TRANSITION_LENGTH)
-        .rect(sensor_width, sensor_width)
-        .loft(combine=True)
-    )
-
-    # Create inner cavity with taper - OPEN at bottom for airflow!
-    # Start the inner cavity at WALL_THICKNESS to leave the bottom rim intact
-    # but make sure the center is completely open
-    inner = (
-        cq.Workplane("XY")
-        .workplane(offset=WALL_THICKNESS)  # Start just above bottom plate
-        .rect(base_width - 2*bottom_margin, base_depth - 2*bottom_margin)  # Open center
-        .workplane(offset=TRANSITION_LENGTH - WALL_THICKNESS)
-        .rect(SENSOR_CHAMBER_WIDTH, SENSOR_CHAMBER_WIDTH)
-        .loft(combine=True)
-    )
-
-    transition = outer.cut(inner)
-
-    # Add bottom plate with open center - this provides sealing rim only
-    transition = transition.union(bottom_plate)
-
-    # Add female snap-fit on bottom
-    transition = add_female_snap_fit(transition, base_width, base_depth, 0)
-
-    # Add male snap-fit on top
-    transition = add_male_snap_fit(transition, sensor_width, sensor_width, TRANSITION_LENGTH + WALL_THICKNESS)
-
-    return transition
 
 def create_transition_section_quadrant():
     """
@@ -1021,7 +889,7 @@ def create_fan_adapter():
     """
     chamber_size = SENSOR_CHAMBER_WIDTH + 2*WALL_THICKNESS
     adapter_height = 40
-    fan_mount_thickness = 4  # Must match create_fan_mount()
+    fan_mount_thickness = 4
 
     # Create outer shell transition - goes all the way to top of fan mount
     outer = (
@@ -1068,13 +936,6 @@ def create_fan_adapter():
     return adapter
 
 # ==================== ASSEMBLY & EXPORT ====================
-
-def split_large_part(part, part_name, max_x, max_y):
-    """Split a part that's too large for the print bed"""
-    # This is a placeholder - actual implementation would be complex
-    # For now, we'll export the full part and note it needs splitting
-    print(f"    NOTE: {part_name} exceeds print bed and needs manual splitting")
-    return [part]
 
 def generate_all_parts():
     """Generate all parts and export to STL"""
