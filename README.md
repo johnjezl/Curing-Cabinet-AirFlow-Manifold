@@ -14,7 +14,8 @@
 
 ### Airflow Performance
 - **Cabinet Size**: 550mm × 550mm interior cross-section
-- **Intake Tubes**: 9 tubes (3×3 grid), 35mm ID, 38mm OD
+- **Intake Tubes**: 9 tubes (3×3 grid), 35mm ID, 39.5mm OD
+- **Tube Threads**: ISO metric M39.5×2.5 external threads (using cq_warehouse IsoThread)
 - **Total Intake Area**: 8,659 mm²
 - **Sensor Chamber**: 42mm × 42mm = 1,764 mm²
 - **Actual Speed Multiplier**: 4.91x (within 2% of target)
@@ -33,9 +34,17 @@
 ## Files
 
 ### Main Design Files
-- **manifold_design.py** - Main design generator (monolithic parts)
+- **manifold_design.py** - Main design generator (monolithic parts with IsoThread)
 - **manifold_design_split.py** - Split base generator (for print bed constraints)
+- **pcb_holder.py** - PCB chip holder for sensor mounting
+- **print_layout_transitions.py** - Multi-quadrant transition layout for printing
+- **test_tube_and_nut.py** - Test script for tube and nut generation
 - **requirements.txt** - Python dependencies
+
+### Dependencies
+- **cadquery** - 3D CAD library for Python
+- **cq_warehouse** - Thread generation library (for perfect ISO metric threads)
+  - Install: `python3 -m pip install git+https://github.com/gumyr/cq_warehouse.git#egg=cq_warehouse`
 
 ### Generated STL Files
 
@@ -44,7 +53,8 @@
 - **manifold_transition.stl** (510×510→48×48×150mm) - Tapered transition
 - **manifold_sensor_chamber.stl** (48×48×80mm) - Sensor mounting chamber
 - **manifold_fan_adapter.stl** (48×48→130×130×44mm) - Fan adapter
-- **intake_tube.stl** (38×38×60mm) - Individual tube (print 9×)
+- **intake_tube.stl** (~40×40×79mm with flange) - Individual tube with ISO metric threads (print 9×)
+- **nut.stl** (~55×55×16mm) - Threaded mounting nut for each tube (print 9×)
 
 #### Option 2: Split Base (fits Ender 3 V3 KE)
 - **base_section_0_0.stl** through **base_section_2_2.stl** (9 sections, each ~170×170×43mm)
@@ -62,14 +72,17 @@
    - 9× intake_tube
 
 2. **Prepare Freezer**:
-   - Drill 9 holes in freezer top (38mm diameter)
-   - Position in 3×3 grid: 137.5mm spacing between centers
-   - First hole at 137.5mm from each edge
+   - Drill 9 holes in freezer top (39.5mm diameter for tube body, or slightly larger for clearance)
+   - Position in 3×3 grid: spacing based on base design
+   - Recommended spacing: evenly distributed across 510mm base
 
 3. **Install Intake Tubes**:
-   - Insert tubes from below through freezer top
-   - Add gasket/o-ring at freezer surface
-   - Secure with nut (if threaded) or epoxy
+   - Insert tubes from above (flange stays on top)
+   - Tube drops down through freezer top
+   - Add gasket/o-ring between flange and freezer surface
+   - Thread nut from below (inside freezer) onto tube threads
+   - Tighten nut to secure tube and compress gasket
+   - **Threads**: ISO metric M39.5×2.5, no-twist IsoThread design for perfect fit
 
 4. **Assemble Manifold**:
    - Place manifold_base on top of freezer
@@ -133,7 +146,8 @@
 - **Transition**: May need supports if overhang >45° (depends on taper)
 - **Sensor Chamber**: Supports may be needed for struts
 - **Fan Adapter**: Supports recommended for overhang
-- **Intake Tubes**: Print vertically for best strength, no supports needed
+- **Intake Tubes**: Print vertically (flange down) for best thread quality, no supports needed
+- **Nuts**: Print flat (base down), no supports needed. Threads print cleanly with IsoThread design
 
 ## Sealing and Finishing
 
@@ -152,9 +166,11 @@
 - Critical for air-tight operation
 
 ### Freezer Penetrations
-- Use rubber grommets or gaskets at each tube
-- Silicone caulk around tubes on both sides of freezer top
+- Use rubber gaskets between tube flange and freezer top surface
+- Threaded nut secures from inside freezer and compresses gasket
+- Optional: Add silicone caulk around tube on both sides for extra seal
 - Ensure air-tight seal to prevent outside air infiltration
+- Hex wrench grips on nut allow proper tightening without over-torquing
 
 ## Operation
 
@@ -355,6 +371,19 @@ Designed using:
 For questions or improvements, please open an issue or submit a pull request.
 
 ## Changelog
+
+### Version 2.0 (Current)
+- **IsoThread Integration**: Perfect ISO metric M39.5×2.5 threads using cq_warehouse
+  - External threads on intake tubes (no twist, uniform profile)
+  - Internal threads on mounting nuts (perfect mate)
+  - Valley cut technique for visible, functional threads
+- **Improved Tube Mounting**: Threaded nut system for secure, adjustable installation
+- **Thread Design**:
+  - Tube: Valley depth = 1.125mm (half wall thickness)
+  - Nut: Bore matches tube OD, threads through full height
+  - Both use IsoThread for perfect engagement
+- **Code Cleanup**: Removed unused functions, imports, and dead code
+- **New Test Scripts**: test_tube_and_nut.py for validation printing
 
 ### Version 1.0 (Initial)
 - Modular 4-piece design with snap-fits

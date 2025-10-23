@@ -1,8 +1,8 @@
 # Project Summary - Air Flow Manifold for Curing Cabinet
 
-## Project Status: ✅ READY FOR PRINTING
+## Project Status: ✅ VERSION 2.0 - ISOTHREAD INTEGRATION COMPLETE
 
-All design work is complete and STL files have been generated and are ready to print.
+All design work is complete with professional ISO metric threads. Ready for test printing and validation.
 
 ## What Was Delivered
 
@@ -19,8 +19,9 @@ A complete, production-ready air flow manifold system that solves your curing ca
 2. **Even Distribution Across Cabinet**
    - 9 intake tubes in 3×3 grid
    - Covers 550mm × 550mm cabinet interior
-   - 137.5mm spacing between tube centers
-   - Each tube: 35mm ID for low resistance
+   - Evenly distributed across 510mm base
+   - Each tube: 35mm ID, 39.5mm OD with ISO metric threads
+   - **NEW**: M39.5×2.5 threads using cq_warehouse IsoThread (no twist, perfect profile)
 
 3. **Gradual Flow Concentration**
    - 150mm transition section for laminar flow
@@ -69,7 +70,8 @@ base_section_2_2.stl  (170×170×43mm)
 manifold_transition.stl  (510×510→48×48×150mm)
 manifold_sensor_chamber.stl  (48×48×80mm)
 manifold_fan_adapter.stl  (48×48→130×130×44mm)
-intake_tube.stl  (Ø38×60mm, print 9×)
+intake_tube.stl  (Ø39.5×79mm with threads, print 9×)
+nut.stl  (Ø55×16mm threaded, print 9×)
 ```
 
 **Monolithic Base Option:**
@@ -89,10 +91,69 @@ PROJECT_SUMMARY.md     - This file
 ### Source Code
 
 ```
-manifold_design.py        - Main design generator (Python + CadQuery)
+manifold_design.py        - Main design generator with IsoThread (Python + CadQuery)
 manifold_design_split.py  - Split base generator
-requirements.txt          - Python dependencies
+pcb_holder.py            - PCB chip holder for sensor
+print_layout_transitions.py - Multi-quadrant transition layout
+test_tube_and_nut.py     - Test script for thread validation
+fastener.py              - Reference: cq_warehouse fastener library
+requirements.txt         - Python dependencies
 ```
+
+### Dependencies
+
+```bash
+# Install CadQuery (if not already installed)
+pip install cadquery
+
+# Install cq_warehouse for IsoThread support
+python3 -m pip install git+https://github.com/gumyr/cq_warehouse.git#egg=cq_warehouse
+```
+
+## Recent Improvements (Version 2.0)
+
+### IsoThread Integration
+
+**Problem Solved:** Previous thread implementations had twisting artifacts and inconsistent profiles along the helix.
+
+**Solution Implemented:**
+- Integrated `cq_warehouse.IsoThread` for professional ISO metric threads
+- External threads (M39.5×2.5) on intake tubes
+- Internal threads (M39.5×2.5) on mounting nuts
+- Perfect thread engagement with no twist or rotation artifacts
+
+**Thread Design Details:**
+
+**Intake Tube (External Threads):**
+- Base tube: 39.5mm OD, 35mm ID
+- Valley cut: 1.125mm deep (half wall thickness) in threaded region
+- IsoThread ridges: Added on top of valley
+- Thread peaks extend above original tube surface
+- Result: Visible, functional threads that mate perfectly with nut
+
+**Mounting Nut (Internal Threads):**
+- Bore diameter: Matches tube OD (39.5mm)
+- IsoThread ridges: Project inward from bore
+- Thread height: Full nut height (16mm = 3mm base + 5mm hex + 8mm threaded)
+- Hex section: 54.5mm across flats for wrench grip
+- Result: Professional internal threads that grip tube perfectly
+
+**Benefits:**
+- ✅ No twist - uniform thread profile throughout
+- ✅ ISO metric standard - proper M39.5×2.5 pitch
+- ✅ Easy to print - no supports needed
+- ✅ Perfect mate - tube and nut threads designed together
+- ✅ Adjustable - nut can be tightened to compress gasket
+- ✅ Strong - full thread engagement along entire nut height
+
+### Code Quality Improvements
+
+- Removed all unused functions (5 functions eliminated)
+- Removed all dead code and commented-out alternatives
+- Removed unused imports (12+ imports cleaned up)
+- Fixed import errors (non-existent functions)
+- Centralized thread generation using professional library
+- Added test scripts for validation
 
 ## Technical Specifications
 

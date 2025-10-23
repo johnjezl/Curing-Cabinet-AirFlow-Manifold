@@ -17,6 +17,14 @@ import math
 import sys
 import io
 
+# Try to import cq_warehouse for proper thread generation
+try:
+    from cq_warehouse.thread import IsoThread
+    HAS_CQ_WAREHOUSE = True
+except ImportError:
+    HAS_CQ_WAREHOUSE = False
+    print("Warning: cq_warehouse not available, threads will use simplified method")
+
 # Fix Windows encoding issues
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
@@ -105,6 +113,56 @@ def verify_speed_multiplier():
         print(f"WARNING: Speed multiplier deviation: {abs(actual_multiplier - TARGET_SPEED_MULTIPLIER):.2f}x")
     return actual_multiplier
 
+
+def helix(r0,r_eps,p,h,d=0,frac=1e-1):
+    
+    def func(t):
+        
+        if t>frac and t<1-frac:
+            z = h*t + d
+            r = r0+r_eps
+        elif t<=frac:
+            z = h*t + d*math.sin(math.pi/2 *t/frac)
+            r = r0 + r_eps*math.sin(math.pi/2 *t/frac)
+        else:
+            z = h*t - d*math.sin(2*math.pi - math.pi/2*(1-t)/frac)
+            r = r0 - r_eps*math.sin(2*math.pi - math.pi/2*(1-t)/frac)
+            
+        x = r*math.sin(-2*math.pi/(p/h)*t)
+        y = r*math.cos(2*math.pi/(p/h)*t)
+        
+        return x,y,z
+    
+    return func
+
+def thread(radius, pitch, height, d, radius_eps, aspect= 10):
+    
+    e1_bottom = (cq.Workplane("XY")
+        .parametricCurve(helix(radius,0,pitch,height,-d)).val()
+    )
+    e1_top = (cq.Workplane("XY")
+        .parametricCurve(helix(radius,0,pitch,height,d)).val()
+    )
+    
+    e2_bottom = (cq.Workplane("XY")
+        .parametricCurve(helix(radius,radius_eps,pitch,height,-d/aspect)).val()
+    )
+    e2_top = (cq.Workplane("XY")
+        .parametricCurve(helix(radius,radius_eps,pitch,height,d/aspect)).val()
+    )
+    
+    f1 = cq.Face.makeRuledSurface(e1_bottom, e1_top)
+    f2 = cq.Face.makeRuledSurface(e2_bottom, e2_top)
+    f3 = cq.Face.makeRuledSurface(e1_bottom, e2_bottom)
+    f4 = cq.Face.makeRuledSurface(e1_top, e2_top)
+    
+    sh = cq.Shell.makeShell([f1,f2,f3,f4])
+    rv = cq.Solid.makeSolid(sh)
+    
+    return rv
+
+
+
 # ==================== COMPONENT BUILDERS ====================
 
 def create_intake_tube():
@@ -139,50 +197,91 @@ def create_intake_tube():
         .cutBlind(-(TUBE_LENGTH + WALL_THICKNESS))  # Cut through flange and tube
     )
 
-    # Add external threads at bottom for nut - TRUE HELICAL THREADS
-    # Create a helical thread groove by sweeping a triangular profile along a helix path
+    # Add external threads at bottom for nut
     thread_start_z = -(WALL_THICKNESS + TUBE_LENGTH - THREAD_LENGTH)
-    num_turns = THREAD_LENGTH / THREAD_PITCH
 
-    # Generate helix path points
-    helix_points = []
-    steps_per_turn = 60  # Smooth helix
-    total_steps = int(num_turns * steps_per_turn)
+    if HAS_CQ_WAREHOUSE:
+        # Use cq_warehouse IsoThread for proper thread generation
+        # First cut a valley to make room for the thread ridges
 
-    for i in range(total_steps + 1):
-        angle = (i / steps_per_turn) * 2 * math.pi  # radians
-        z = thread_start_z - (i / total_steps) * THREAD_LENGTH
-        radius = TUBE_OD/2 - THREAD_DEPTH/2
-        x = radius * math.cos(angle)
-        y = radius * math.sin(angle)
-        helix_points.append((x, y, z))
+        # Calculate valley depth - half the wall thickness
+        wall_thickness_tube = (TUBE_OD - TUBE_ID) / 2  # 2.25mm
+        valley_depth = wall_thickness_tube / 2  # 1.125mm
 
-    # Create the helix wire path
-    helix_wire = cq.Wire.makeHelix(
-        pitch=THREAD_PITCH,
-        height=THREAD_LENGTH,
-        radius=TUBE_OD/2 - THREAD_DEPTH/2,
-        center=(0, 0, thread_start_z),
-        dir=(0, 0, -1)
-    )
+        # Create valley by reducing tube diameter in threaded region
+        thread_valley_radius = TUBE_OD/2 - valley_depth
+        thread_valley = (
+            cq.Workplane("XY")
+            .workplane(offset=thread_start_z)
+            .circle(thread_valley_radius)
+            .extrude(-THREAD_LENGTH)
+        )
 
-    # Create thread profile (triangular groove cross-section)
-    # Profile is perpendicular to the tube surface
-    # Mirrored triangle instead of rotated
-    # Cut deeper into wall by ~1/4 wall thickness (0.5mm)
-    wall_thickness_tube = (TUBE_OD - TUBE_ID) / 2  # 2mm
-    thread_profile = (
-        cq.Workplane("XZ")
-        .center(TUBE_OD/2 - THREAD_DEPTH/2 - wall_thickness_tube/4, thread_start_z)  # Cut 0.5mm deeper
-        .moveTo(THREAD_DEPTH * 0.8, 0)  # Points radially inward
-        .lineTo(0, THREAD_PITCH * 0.4)  # Mirrored - swapped sign
-        .lineTo(0, -THREAD_PITCH * 0.4)  # Mirrored - swapped sign
-        .close()
-    )
+        outer_cylinder = (
+            cq.Workplane("XY")
+            .workplane(offset=thread_start_z)
+            .circle(TUBE_OD/2)
+            .extrude(-THREAD_LENGTH)
+        )
 
-    # Sweep the profile along the helix
-    thread_groove = thread_profile.sweep(helix_wire)
-    tube = tube.cut(thread_groove)
+        # Cut the valley
+        material_to_remove = outer_cylinder.cut(thread_valley)
+        tube = tube.cut(material_to_remove)
+
+        # Create the IsoThread (just the helical ridges)
+        thread_obj = IsoThread(
+            major_diameter=TUBE_OD,
+            pitch=THREAD_PITCH,
+            length=THREAD_LENGTH,
+            external=True,
+            end_finishes=("fade", "fade"),
+        )
+
+        # Position the thread at the correct Z location
+        # IsoThread creates from z=0 upward, we need it to go downward from thread_start_z
+        thread_as_solid = cq.Solid(thread_obj.wrapped)
+        thread_positioned = thread_as_solid.translate((0, 0, thread_start_z - THREAD_LENGTH))
+
+        # Union the thread to the tube - this adds the helical ridges on top of the valley
+        tube = tube.union(thread_positioned)
+    else:
+        # Fallback: Create simplified threads with helical groove
+        # First, reduce the tube diameter in the threaded region
+        thread_root_radius = TUBE_OD/2 - THREAD_DEPTH/2
+        thread_valley = (
+            cq.Workplane("XY")
+            .workplane(offset=thread_start_z)
+            .circle(thread_root_radius)
+            .extrude(-THREAD_LENGTH)
+        )
+
+        outer_cylinder = (
+            cq.Workplane("XY")
+            .workplane(offset=thread_start_z)
+            .circle(TUBE_OD/2)
+            .extrude(-THREAD_LENGTH)
+        )
+        material_to_remove = outer_cylinder.cut(thread_valley)
+        tube = tube.cut(material_to_remove)
+
+        # Create threads by cutting away a helical groove with a sphere
+        helix_wire = cq.Wire.makeHelix(
+            pitch=THREAD_PITCH,
+            height=THREAD_LENGTH,
+            radius=TUBE_OD/2,
+            center=(0, 0, thread_start_z),
+            dir=(0, 0, -1)
+        )
+
+        sphere_radius = THREAD_DEPTH * 0.4
+        groove_cutter = (
+            cq.Workplane("XY")
+            .sphere(sphere_radius)
+            .translate((TUBE_OD/2, 0, thread_start_z))
+        )
+
+        groove = groove_cutter.sweep(helix_wire)
+        tube = tube.cut(groove)
 
     return tube
 
@@ -221,44 +320,67 @@ def create_tube_mounting_nut():
     # Combine all sections
     nut = nut_base.union(hex_section).union(thread_section)
 
-    nut_id = TUBE_OD/2
-    # Cut central hole through entire nut - smooth bore for tube to pass through
-    nut = (
-        nut.faces(">Z").workplane()
-        .circle(nut_id)  # Clearance for tube OD
-        .cutThruAll()
-    )
+    # Calculate total nut height
+    total_nut_height = WALL_THICKNESS + hex_height + NUT_THICKNESS
 
-    # Cut internal threads - TRUE HELICAL THREADS
-    # Create helical thread groove that cuts into the inner wall
-    # Threads need to go ALL THE WAY through the threaded section
-    thread_start_z = 0
-    thread_total_height = NUT_THICKNESS * 2  # Full height of threaded section
-    num_turns = thread_total_height / THREAD_PITCH
+    if HAS_CQ_WAREHOUSE:
+        # Use cq_warehouse IsoThread for internal threads
+        # The bore should match the tube OD (the threads will engage)
 
-    # Create the helix wire path (internal, going upward through entire threaded section)
-    helix_wire = cq.Wire.makeHelix(
-        pitch=THREAD_PITCH,
-        height=thread_total_height,  # Go all the way through
-        radius=nut_id + THREAD_DEPTH/2,  # Internal thread radius
-        center=(0, 0, thread_start_z),
-        dir=(0, 0, 1)  # Upward direction
-    )
+        # Cut center hole at tube OD through ENTIRE nut
+        nut_bore_radius = TUBE_OD/2
+        nut = (
+            nut.faces(">Z").workplane()
+            .circle(nut_bore_radius)
+            .cutThruAll()
+        )
 
-    # Create thread profile (triangular groove cross-section for internal threads)
-    # Rotated 180 degrees from tube thread to mate properly
-    thread_profile = (
-        cq.Workplane("XZ")
-        .center(nut_id + THREAD_DEPTH/2, thread_start_z)
-        .moveTo(0, THREAD_DEPTH * 0.8)  # Rotated 180 degrees from tube
-        .lineTo(-THREAD_PITCH * 0.4, 0)
-        .lineTo(THREAD_PITCH * 0.4, 0)
-        .close()
-    )
+        # Create internal IsoThread through ENTIRE nut height
+        thread_obj = IsoThread(
+            major_diameter=TUBE_OD,
+            pitch=THREAD_PITCH,
+            length=total_nut_height,  # Thread through entire nut
+            external=False,  # Internal thread for nut
+            end_finishes=("fade", "fade"),
+        )
 
-    # Sweep the profile along the helix to create internal thread groove
-    thread_groove = thread_profile.sweep(helix_wire)
-    nut = nut.cut(thread_groove)
+        # Position the thread at Z=0 (bottom of nut)
+        thread_as_solid = cq.Solid(thread_obj.wrapped)
+        thread_positioned = thread_as_solid.translate((0, 0, 0))
+
+        # UNION the internal thread to the nut (add the ridges that stick inward)
+        nut = nut.union(thread_positioned)
+    else:
+        # Fallback: Old helix sweep method
+        nut_id = TUBE_OD/2
+        # Cut central hole through entire nut - smooth bore for tube to pass through
+        nut = (
+            nut.faces(">Z").workplane()
+            .circle(nut_id)
+            .cutThruAll()
+        )
+
+        # Cut internal threads - helical sweep
+        thread_total_height = NUT_THICKNESS * 2
+        helix_wire = cq.Wire.makeHelix(
+            pitch=THREAD_PITCH,
+            height=thread_total_height,
+            radius=nut_id + THREAD_DEPTH/2,
+            center=(0, 0, 0),
+            dir=(0, 0, 1)
+        )
+
+        thread_profile = (
+            cq.Workplane("XZ")
+            .center(nut_id + THREAD_DEPTH/2, 0)
+            .moveTo(0, THREAD_DEPTH * 0.8)
+            .lineTo(-THREAD_PITCH * 0.4, 0)
+            .lineTo(THREAD_PITCH * 0.4, 0)
+            .close()
+        )
+
+        thread_groove = thread_profile.sweep(helix_wire)
+        nut = nut.cut(thread_groove)
 
     return nut
 

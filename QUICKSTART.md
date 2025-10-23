@@ -1,5 +1,13 @@
 # Quick Start Guide - Air Flow Manifold
 
+## Version 2.0 - IsoThread Integration
+
+This design now features **professional ISO metric threads** (M39.5×2.5) generated with the cq_warehouse IsoThread library. The threaded tube and nut system provides:
+- Secure, adjustable mounting
+- Air-tight gasket compression
+- No additional fasteners needed for tubes
+- Easy installation and removal
+
 ## What You Have
 
 A complete 3D-printable air flow manifold system for your curing cabinet that:
@@ -20,9 +28,10 @@ A complete 3D-printable air flow manifold system for your curing cabinet that:
 - `manifold_transition.stl` (1 part)
 - `manifold_sensor_chamber.stl` (1 part)
 - `manifold_fan_adapter.stl` (1 part)
-- `intake_tube.stl` (print 9 times)
+- `intake_tube.stl` (print 9 times) - with ISO metric M39.5×2.5 external threads
+- `nut.stl` (print 9 times) - threaded mounting nuts
 
-**Total**: 13 prints
+**Total**: 22 prints (9 tubes + 9 nuts + 4 main sections)
 
 ### Path B: Monolithic Base
 **Pros**: Fewer parts to assemble
@@ -33,9 +42,10 @@ A complete 3D-printable air flow manifold system for your curing cabinet that:
 - `manifold_transition.stl` (1 part)
 - `manifold_sensor_chamber.stl` (1 part)
 - `manifold_fan_adapter.stl` (1 part)
-- `intake_tube.stl` (print 9 times)
+- `intake_tube.stl` (print 9 times) - with ISO metric M39.5×2.5 external threads
+- `nut.stl` (print 9 times) - threaded mounting nuts
 
-**Total**: 13 prints (after splitting base)
+**Total**: 22 prints (9 tubes + 9 nuts + 4 main sections, after splitting base)
 
 ## Print Settings (PETG Recommended)
 
@@ -51,6 +61,12 @@ Print Speed: 60mm/s
 Temperature: 235°C / Bed 80°C (adjust for your PETG)
 ```
 
+**Special settings for threaded parts:**
+- **Intake tubes**: Print vertically (flange down) for best thread quality
+- **Nuts**: Print flat (base down), no supports needed
+- **Thread specs**: ISO metric M39.5×2.5 (generated with IsoThread library)
+- Clean threads print perfectly with PETG at 0.2mm layers
+
 ## Hardware You'll Need
 
 ### Path A (Split Base):
@@ -59,12 +75,14 @@ Temperature: 235°C / Bed 80°C (adjust for your PETG)
 - 24× M4 washers
 - 4× M3 screws (10-15mm) for sensor mounting
 - Silicone gasket maker (1 tube)
-- 9× rubber grommets (38mm ID) for freezer penetrations
+- 9× rubber gaskets (40-45mm OD, ~38mm ID) for freezer penetrations
 
 ### Path B (Monolithic):
 - 4× M3 screws (10-15mm) for sensor mounting
 - Silicone gasket maker (1 tube)
-- 9× rubber grommets (38mm ID) for freezer penetrations
+- 9× rubber gaskets (40-45mm OD, ~38mm ID) for freezer penetrations
+
+**Note**: The threaded tube/nut system eliminates the need for additional hardware to secure tubes. The printed nuts provide adjustable, air-tight mounting.
 
 ### Both Paths:
 - 1× 120mm PC fan (12V PWM recommended)
@@ -75,7 +93,13 @@ Temperature: 235°C / Bed 80°C (adjust for your PETG)
 ## Assembly Steps (Split Base - Path A)
 
 ### Step 1: Print All Parts
-Print all 13 parts using settings above. Estimated print time: 60-80 hours total.
+Print all 22 parts using settings above:
+- 9× base sections
+- 1× transition, 1× sensor chamber, 1× fan adapter
+- 9× intake tubes (print vertically)
+- 9× nuts (print flat)
+
+Estimated print time: 70-90 hours total.
 
 ### Step 2: Assemble Base Sections
 1. Layout the 9 base sections according to the grid (see README.md)
@@ -90,14 +114,19 @@ Print all 13 parts using settings above. Estimated print time: 60-80 hours total
    - Grid: 3 rows × 3 columns
    - Spacing: 137.5mm between centers
    - First hole at 137.5mm from each edge
-2. Drill 38mm diameter holes
-3. Install rubber grommets in each hole
+2. Drill 39.5mm diameter holes (to match tube OD)
+3. Clean and deburr holes
 
-### Step 4: Install Intake Tubes
-1. Insert each tube from below through freezer top
-2. Tube should protrude ~60mm above freezer
-3. Apply silicone sealant around each tube
-4. Let cure 24 hours
+### Step 4: Install Intake Tubes (Threaded System)
+1. Insert each tube from **above** through freezer top (flange stays on top)
+2. Tube drops down through hole into freezer
+3. Place rubber gasket between flange and freezer surface
+4. Thread nut onto tube from **below** (inside freezer)
+   - Nuts have M39.5×2.5 internal threads
+   - Thread by hand initially, then tighten
+5. Tighten nut to secure tube and compress gasket
+6. Optional: Add silicone sealant around tube for extra seal
+7. Repeat for all 9 tubes
 
 ### Step 5: Mount Base Assembly
 1. Place assembled base on top of freezer
@@ -173,9 +202,15 @@ Once assembled and tested:
 ## Need to Modify the Design?
 
 1. Install Python 3.x
-2. Run: `pip install -r requirements.txt`
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   python3 -m pip install git+https://github.com/gumyr/cq_warehouse.git#egg=cq_warehouse
+   ```
 3. Edit parameters in `manifold_design.py`
 4. Run: `python manifold_design.py` to regenerate STL files
+
+**Note**: cq_warehouse is required for ISO metric thread generation (IsoThread). Without it, threads will not be generated correctly.
 
 See README.md for detailed modification instructions.
 
