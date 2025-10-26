@@ -327,8 +327,8 @@ def create_tube_mounting_nut():
         # Use cq_warehouse IsoThread for internal threads
         # The bore should match the tube OD (the threads will engage)
 
-        # Cut center hole at tube OD through ENTIRE nut
-        nut_bore_radius = TUBE_OD/2
+        # Cut center hole at tube OD + 2mm clearance through ENTIRE nut
+        nut_bore_radius = TUBE_OD/2 + 1.0  # +2mm to ID (1.0mm per radius)
         nut = (
             nut.faces(">Z").workplane()
             .circle(nut_bore_radius)
@@ -337,7 +337,7 @@ def create_tube_mounting_nut():
 
         # Create internal IsoThread through ENTIRE nut height
         thread_obj = IsoThread(
-            major_diameter=TUBE_OD,
+            major_diameter=TUBE_OD + 2.0,  # Match the increased bore diameter
             pitch=THREAD_PITCH,
             length=total_nut_height,  # Thread through entire nut
             external=False,  # Internal thread for nut
@@ -911,7 +911,7 @@ def create_sensor_chamber():
         chamber = chamber.union(post)
 
     # Add clips (horizontal tabs that extend over PCB edges)
-    CLIP_OVERHANG = 1.6  # mm
+    CLIP_OVERHANG = 1.8  # mm
     CLIP_LENGTH = 2.0  # mm
     CLIP_THICKNESS = 0.6  # mm
 
