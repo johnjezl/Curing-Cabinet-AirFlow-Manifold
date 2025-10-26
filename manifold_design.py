@@ -1044,6 +1044,7 @@ def create_fan_adapter():
         (-hole_offset, -hole_offset),
     ]
 
+    # Cut the mounting holes from the top
     for x, y in positions:
         adapter = (
             adapter.faces(">Z").workplane()
@@ -1051,6 +1052,22 @@ def create_fan_adapter():
             .circle(FAN_MOUNT_HOLE_DIA/2)
             .cutThruAll()
         )
+
+    # Add counterbore at the exit of each hole for nut/washer flat surface
+    # These cut into the hole from underneath to create a flat seating surface
+    counterbore_dia = 10  # mm - enough for washer
+    counterbore_depth = 9.5  # mm - cut depth into the part
+
+    for x, y in positions:
+        # Create counterbore at each hole - cut upward into the underside of the hole
+        # Work from the bottom of the adapter and cut up into where holes exit
+        counterbore = (
+            cq.Workplane("XY", origin=(0,0,25))
+            .pushPoints([(x, y)])
+            .circle(counterbore_dia/2)
+            .extrude(counterbore_depth)  # Extrude upward a short distance
+        )
+        adapter = adapter.cut(counterbore)
 
     # Add female snap-fit on bottom
     adapter = add_female_snap_fit(adapter, chamber_size, chamber_size, 0)
